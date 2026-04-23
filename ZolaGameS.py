@@ -5,9 +5,14 @@ import concurrent.futures
 import threading
 import time
 
-# EXAMPLE VERSION
-# #######################
-import playerExampleRandom as playerBmodule
+'''
+In questa sezione, mediante gli import, settiamo la tipologia di giocatore.
+
+Così settato, con il blu gioca la nostra strategia e con il rosso gioco quella Alpha del professore.
+'''
+
+#import playerExampleRandom as playerBmodule
+import playerExampleNostro as playerBmodule
 import playerExampleAlpha as playerRmodule
 # #######################
 
