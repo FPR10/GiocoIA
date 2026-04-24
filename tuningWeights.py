@@ -41,6 +41,7 @@ Output
 """
 
 import sys
+sys.stdout.reconfigure(encoding='utf-8')
 import os
 import json
 import math
@@ -288,7 +289,7 @@ def hill_climb():
         elapsed = time.perf_counter() - t0
 
         accepted = wr >= MIN_WIN_RATE
-        tag = "✓ accettato" if accepted else "✗ rifiutato"
+        tag = "OK accettato" if accepted else "NO rifiutato"
         print(f"[{it:3d}/{MAX_ITERATIONS}]  wr={wr:.3f}  {tag}  ({elapsed:.1f}s)")
         if changed_str:
             print(f"         modifiche: {changed_str}")
