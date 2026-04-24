@@ -9,12 +9,19 @@ import time
 In questa sezione, mediante gli import, settiamo la tipologia di giocatore.
 
 Così settato, con il blu gioca la nostra strategia e con il rosso gioco quella Alpha del professore.
+
+
+Player fin'ora implementati:
+
+- playerExampleNostro_v1 prima implementazione con le regole di giuseppe -- Iterative deepening e Minimax
+- playerExampleNostro_v2 aggiornamento di _v1 con le nuove regole di giuseppe -- Iterative deepening e minimax
+- playerExampleNostro2 gioca con Montecarlo
 '''
 
 #import playerExampleRandom as playerBmodule
-import GiocoIA.vecchiPlayerEuristici.playerExampleNostroEU_old as playerBmodule
+import vecchiPlayerEuristici.playerExampleNostroEU_old as playerBmodule
 #import playerExampleAlpha as playerRmodule
-import GiocoIA.playerExampleNostroEU as playerRmodule
+import playerExampleNostroEU as playerRmodule
 # #######################
 
 class Game:
