@@ -9,37 +9,45 @@ import time
 # sia quando è "Red": tutta la logica usa `player` come parametro esplicito
 # e non assume mai un colore fisso.
 #
-# Regole strategiche (R1–R6):
+# Regole strategiche (R1–R7):
 #
 #   R1. Preferire mosse che partono dal settore di casa del giocatore.
-#       Blue: casa = Q1 (top-left, angolo (0,0)) + Q4 (bottom-right, angolo (7,7))
-#       Red:  casa = Q2 (top-right, angolo (0,7)) + Q3 (bottom-left, angolo (7,0))
+#       Blue: casa = Q1 (top-left) + Q4 (bottom-right)
+#       Red:  casa = Q2 (top-right) + Q3 (bottom-left)
 #
-#   R2. Prediligi catture più esterne: livello-destinazione alto = periferia.
+#   R2. Preferire catture verso celle più esterne:
+#       maggiore è il livello della destinazione, maggiore è il bonus.
 #
-#   R3. Mosse verso l'esterno nei quadranti avversari ricevono peso maggiore.
-#       Se tutte le catture disponibili sono troppo interne (livello ≤ soglia),
-#       le mosse non-catturanti ricevono un bonus extra (riposizionamento).
+#   R3. Movimenti non-catturanti verso l'esterno:
+#       - nei quadranti avversari ricevono bonus maggiore
+#       - nei quadranti di casa ricevono bonus minore
+#       - se tutte le catture disponibili sono troppo interne
+#         (dest_level ≤ soglia), le non-catture ricevono un bonus extra.
 #
-#   R4. Avanzare verso zone con pedine avversarie esterne e scoperte
-#       (nessuna nostra pedina copre quella zona verso il centro).
+#   R4. Avanzare verso pedine avversarie esterne e "scoperte":
+#       una pedina è considerata esposta se:
+#         - è vicina al bordo (livello alto)
+#         - non ha supporto da altre pedine alleate verso il centro
+#       vengono considerate solo pedine entro distanza 2 dalla destinazione.
 #
-#   R5. Preferire catture nel settore di casa; preferire arretramenti-cattura
-#       (dest_level < src_level) nel settore avversario.
-#       Intensità proporzionale alla fase di gioco (forte all'inizio, debole alla fine).
+#   R5. Preferenze dinamiche per le catture (scalate sulla fase di gioco):
+#       - nel settore di casa: bonus per qualsiasi cattura
+#       - nel settore avversario: bonus per catture che arretrano
+#         (dest_level < src_level)
+#       L'intensità diminuisce progressivamente con il numero totale di pedine.
 #
-#   R6. Tra le pedine che possono catturare, preferire quelle più lontane dal
-#       centro (livello sorgente alto). Questa regola è SEPARATA da R2 perché
-#       agisce sull'attaccante, non sulla destinazione.
-#       Motivazione: le pedine esterne hanno già raggiunto posizioni periferiche
-#       vantaggiose e devono essere usate per catturare, mentre quelle centrali
-#       devono ancora avanzare verso l'esterno.
+#   R6. Preferire come attaccanti le pedine più esterne:
+#       tra le mosse di cattura, quelle con livello sorgente maggiore
+#       ricevono un forte bonus.
 #
-# Gestione PASS e bug-fix:
-#   - Se il giocatore non ha mosse ma la partita non è terminata, si passa il
-#     turno con "PASS" sia in alpha-beta che nei rollout MC.
-#   - _pass_count in _alphabeta evita la ricorsione infinita se entrambi
-#     i giocatori sono bloccati contemporaneamente.
+#   R7. Penalizzazione dei movimenti verso il centro:
+#       qualsiasi mossa con dest_level < src_level viene penalizzata
+#       proporzionalmente alla differenza di livello.
+#
+# Gestione PASS:
+#   - Se un giocatore non ha mosse disponibili, esegue "PASS".
+#   - Se entrambi i giocatori passano consecutivamente, lo stato viene
+#     trattato come foglia per evitare loop infiniti.
 # ─────────────────────────────────────────────────────────────────────────────
 
 _TIME_MARGIN       = 0.15   # secondi di margine prima del timeout
@@ -177,7 +185,7 @@ def _move_weight(game, state, player, move, caps_are_inner, phase):
     weight = 1.0   # floor: nessuna mossa viene mai esclusa
     #chaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaat
     if dest_level < src_level:
-        weight -= 2.0 * (src_level - dest_level)
+        weight -= 1.5 * (src_level - dest_level)
 
     # ── Mosse catturanti ─────────────────────────────────────────────────────
     if is_cap:

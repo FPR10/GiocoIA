@@ -12,8 +12,9 @@ Così settato, con il blu gioca la nostra strategia e con il rosso gioco quella 
 '''
 
 #import playerExampleRandom as playerBmodule
-import playerExampleNostro as playerBmodule
-import playerExampleAlpha as playerRmodule
+import GiocoIA.vecchiPlayerEuristici.playerExampleNostroEU_old as playerBmodule
+#import playerExampleAlpha as playerRmodule
+import GiocoIA.playerExampleNostroEU as playerRmodule
 # #######################
 
 class Game:
