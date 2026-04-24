@@ -54,7 +54,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ZolaGameS import ZolaGame          # motore di gioco
-import vecchiPlayerEuristici.playerExampleNostroEU_old as _P        # strategia da ottimizzare
+import GiocoIA.vecchiPlayerEuristici.playerExampleNostroEU_old as _P        # strategia da ottimizzare
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -100,7 +100,7 @@ def _make_strategy(weights: dict):
     # importiamo di nuovo il modulo in modo isolato per evitare conflitti
     # tra processi paralleli: ogni chiamata usa una copia locale dei pesi
     import importlib
-    import vecchiPlayerEuristici.playerExampleNostroEU_old as mod
+    import GiocoIA.vecchiPlayerEuristici.playerExampleNostroEU_old as mod
 
     _apply_weights(mod, weights)
 
