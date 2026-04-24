@@ -19,9 +19,9 @@ Player fin'ora implementati:
 '''
 
 #import playerExampleRandom as playerBmodule
-import GiocoIA.vecchiPlayerEuristici.playerExampleNostroEU_old as playerBmodule
+import playerExampleNostroEU as playerBmodule
 #import playerExampleAlpha as playerRmodule
-import GiocoIA.playerExampleNostroEU as playerRmodule
+import playerExampleNostro_v1 as playerRmodule
 # #######################
 
 class Game:
