@@ -13,15 +13,15 @@ Così settato, con il blu gioca la nostra strategia e con il rosso gioco quella 
 
 Player fin'ora implementati:
 
-- playerExampleNostro_v1 prima implementazione con le regole di giuseppe -- Iterative deepening e Minimax
-- playerExampleNostro_v2 aggiornamento di _v1 con le nuove regole di giuseppe -- Iterative deepening e minimax
-- playerExampleNostro2 gioca con Montecarlo
+- playerExampleNostroEU prima implementazione con le regole di giuseppe -- Iterative deepening e Minimax
+- playerExampleNostro_v2 aggiornamento di _v1 con le nuove regole di giuseppe -- Iterative deepening e minimax (nei vecchi)
+- playerExampleNostroMC gioca con Montecarlo - attualmente in fase di modifica da parte di giuseppe
 '''
 
 #import playerExampleRandom as playerBmodule
 import playerExampleNostroEU as playerBmodule
 #import playerExampleAlpha as playerRmodule
-import playerExampleNostro_v1 as playerRmodule
+import playerExampleNostroMC as playerRmodule
 # #######################
 
 class Game:

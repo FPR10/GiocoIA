@@ -9,7 +9,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ZolaGameS import ZolaGame
-import GiocoIA.vecchiPlayer.playerExampleNostroMC_old as BASE_PLAYER   # ← PLAYER DA ALLENARE
+import playerExampleNostroMC_old as BASE_PLAYER   # ← PLAYER DA ALLENARE
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIG
