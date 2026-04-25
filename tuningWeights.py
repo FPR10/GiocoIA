@@ -126,7 +126,7 @@ OPPONENT_POOL = [
 # CONFIG
 # ═══════════════════════════════════════════════════════════════════════════════
 
-GAMES_PER_EVAL  = 20    # partite per ogni coppia (candidato vs avversario)
+GAMES_PER_EVAL  = 10    # partite per ogni coppia (candidato vs avversario)
 MAX_ITERATIONS  = 40    # iterazioni hill-climbing totali
 SEARCH_DEPTH    = 2     # profondità alpha-beta nelle partite headless
 MAX_MOVES       = 400   # mosse massime per partita prima di dichiarare pari
