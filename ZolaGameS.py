@@ -19,8 +19,8 @@ Player fin'ora implementati:
 '''
 
 ########## SETTING DEI GIOCATORI  ##################
-import playerExampleNostroEU as playerRmodule
-import playerExampleNostroEU_primaDiMichael as playerBmodule
+import playerExampleNostroRegolaStandard2 as playerRmodule
+import playerExampleNostroIbrido as playerBmodule
 ############################################################
 
 class Game:

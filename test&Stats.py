@@ -3,7 +3,7 @@ import random
 
 from ZolaGameS import ZolaGame  # <-- CAMBIA con il nome del tuo file
 
-import playerExampleNostroEU as playerA
+import playerExampleNostroRegolaStandard2 as playerA
 import playerExampleNostroIbrido as playerB
 
 
@@ -74,13 +74,19 @@ def play_single_game(game_id):
 
     winner = game.winner(state)
     winner_label = mapping[winner]
+    winner_pieces = state.count(winner)
 
     # stampa finale della barra
     print(progress_bar_moves(move_count) + " ✔")
 
-    print(f"✔ Fine partita {game_id} → Vincitore: Player {winner_label} | Mosse: {move_count}")
+    print(
+        f"✔ Fine partita {game_id} → "
+        f"Vincitore: Player {winner_label} ({winner}) | "
+        f"Pedine rimaste: {winner_pieces} | "
+        f"Mosse: {move_count}"
+    )
 
-    return winner_label, move_count
+    return winner_label, move_count, winner_pieces
 
 
 # ─────────────────────────────────────────────
@@ -95,7 +101,7 @@ def main():
     for i in range(1, NUM_GAMES + 1):
         game_start = time.perf_counter()
 
-        winner, moves = play_single_game(i)
+        winner, moves, winner_pieces = play_single_game(i)
 
         results[winner] += 1
         total_moves += moves
@@ -103,8 +109,7 @@ def main():
         game_time = time.perf_counter() - game_start
 
         print(f"⏱ Tempo partita: {game_time:.2f}s")
-
-    total_time = time.perf_counter() - start_time
+        total_time = time.perf_counter() - start_time
 
     # ─────────────────────────────────────────
     # RISULTATI FINALI
