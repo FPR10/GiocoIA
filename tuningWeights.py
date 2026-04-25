@@ -6,71 +6,26 @@ stocastico con self-play headless contro un POOL di avversari.
 
 Come funziona
 ─────────────
-1. Si parte dai pesi di default definiti in BASE_WEIGHTS (coerenti con
-   il player da ottimizzare).
+1. Si parte dai pesi BASE_WEIGHTS.
 2. Ad ogni iterazione si genera un candidato perturbando casualmente
    uno o più pesi.
-3. Il candidato viene valutato contro OGNI avversario del pool:
-      candidato (Red)  vs  avversario (Blue)   -> metà partite
-      candidato (Blue) vs  avversario (Red)     -> metà partite
-   Il win-rate finale è la media pesata sui pool_weights.
-4. Se il win-rate supera MIN_WIN_RATE, il candidato diventa il nuovo
-   "current" (base per la prossima perturbazione).
-5. Al termine il miglior set di pesi viene stampato e salvato in
-   best_weights.json.
-
-Configurazione del pool (sezione POOL)
-───────────────────────────────────────
-Ogni entry è un dizionario con:
-  "name"     -> nome descrittivo dell'avversario
-  "module"   -> stringa del modulo Python da importare
-  "weight"   -> importanza relativa dell'avversario nel calcolo del win-rate
-                (es. 2.0 = vale doppio rispetto a un avversario con peso 1.0)
-
-Parametri configurabili (sezione CONFIG)
-─────────────────────────────────────────
-GAMES_PER_EVAL   partite per ogni coppia candidato-avversario
-MAX_ITERATIONS   iterazioni totali dell'hill climbing
-SEARCH_DEPTH     profondità alpha-beta fissa nelle partite headless
-MAX_MOVES        tetto al numero di mosse per partita (anti-loop)
-MIN_WIN_RATE     win-rate minimo del candidato per essere accettato
-PERTURB_N        quanti pesi perturbare contemporaneamente
-PERTURB_RANGE    ampiezza massima della perturbazione (±)
-WORKERS          processi paralleli
-
-Uso
-───
-    python tuneWeights_v2.py
-
-Output
-──────
-    Stampa su console il progresso e scrive best_weights.json.
+3. Il candidato affronta OGNI avversario del pool in sequenza:
+     - GAMES_PER_EVAL partite sequenziali (metà come Red, metà come Blue)
+     - Per ogni partita viene mostrata una barra mossa-per-mossa
+4. Dopo ogni blocco avversario vengono stampati i pesi correnti.
+5. Se il win-rate pesato supera MIN_WIN_RATE, il candidato diventa la
+   nuova base per la prossima perturbazione.
+6. Al termine il miglior set di pesi viene salvato in best_weights.json.
 """
 
 import sys
 sys.stdout.reconfigure(encoding="utf-8")
+
 import os
 import json
 import math
 import random
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
-
-try:
-    from tqdm import tqdm
-except ImportError:
-    # Fallback minimale se tqdm non è installato
-    def tqdm(iterable=None, **kwargs):
-        if iterable is not None:
-            return iterable
-        class _DummyTqdm:
-            def __init__(self): pass
-            def update(self, n=1): pass
-            def set_postfix_str(self, s): pass
-            def close(self): pass
-            def __enter__(self): return self
-            def __exit__(self, *a): pass
-        return _DummyTqdm()
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -79,64 +34,57 @@ from ZolaGameS import ZolaGame
 # ═══════════════════════════════════════════════════════════════════════════════
 # POOL DI AVVERSARI
 # ═══════════════════════════════════════════════════════════════════════════════
-# Modifica qui per aggiungere/rimuovere avversari.
-# "module" deve essere il percorso importabile del modulo (es. "playerExampleRandom").
-# "weight" determina quanto pesa questo avversario nel win-rate finale:
-#   - avversari più forti → peso maggiore (orientano l'ottimizzazione verso la forza)
-#   - avversari più deboli → peso minore (servono per non "dimenticare" le basi)
 
 OPPONENT_POOL = [
     {
         "name":   "Random",
         "module": "playerProfessore.playerExampleRandom",
-        "weight": 0.5,   # avversario debole: peso basso
+        "weight": 0.5,
     },
     {
         "name":   "AlphaBetaProfessore",
         "module": "playerProfessore.playerExampleAlpha",
-        "weight": 1,   # avversario medio
+        "weight": 1.0,
     },
     {
         "name":   "Nostro v1",
         "module": "vecchiPlayerEuristici.playerExampleNostro_v1",
-        "weight": 1.5,  
+        "weight": 1.5,
     },
     {
         "name":   "Nostro v2",
         "module": "vecchiPlayerEuristici.playerExampleNostro_v2",
-        "weight": 1.5,  
+        "weight": 1.5,
     },
     {
         "name":   "Nostro EU",
         "module": "vecchiPlayerEuristici.playerExampleNostroEU",
-        "weight": 1.5,   
+        "weight": 1.5,
     },
     {
         "name":   "Montecarlo",
         "module": "vecchiPlayerMonteCarlo.playerExampleNostroMC",
-        "weight": 1.5,  
+        "weight": 1.5,
     },
     {
         "name":   "Regola standard 2",
         "module": "playerExampleNostroRegolaStandard2",
-        "weight": 2,  
+        "weight": 2.0,
     },
 ]
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIG
 # ═══════════════════════════════════════════════════════════════════════════════
 
-GAMES_PER_EVAL  = 10    # partite per ogni coppia (candidato vs avversario)
-MAX_ITERATIONS  = 40    # iterazioni hill-climbing totali
-SEARCH_DEPTH    = 2     # profondità alpha-beta nelle partite headless
-MAX_MOVES       = 400   # mosse massime per partita prima di dichiarare pari
-MIN_WIN_RATE    = 0.52  # soglia minima per accettare il candidato
-PERTURB_N       = 2     # quanti pesi perturbare per iterazione
-PERTURB_RANGE   = 8     # perturbazione massima ± per ogni peso
-WORKERS         = max(1, (os.cpu_count() or 2) - 1)
+GAMES_PER_EVAL  = 10     # partite per ogni coppia candidato-avversario
+MAX_ITERATIONS  = 40     # iterazioni totali hill-climbing
+SEARCH_DEPTH    = 2      # profondità alpha-beta nelle partite headless
+MAX_MOVES       = 400    # mosse massime per partita (anti-loop)
+MIN_WIN_RATE    = 0.52   # soglia minima per accettare il candidato
+PERTURB_N       = 2      # quanti pesi perturbare per iterazione
+PERTURB_RANGE   = 8      # perturbazione massima ± per ogni peso
 
-# ── Pesi base del player da ottimizzare (documento 6) ────────────────────────
-# Devono corrispondere esattamente ai nomi delle variabili nel modulo player.
 BASE_WEIGHTS = {
     "_W_PIECES":            80,
     "_W_MOBILITY":           2,
@@ -148,27 +96,50 @@ BASE_WEIGHTS = {
     "_W_CORNER_SETUP":       4,
 }
 
-# Modulo del player da ottimizzare (cambia questo se il file si chiama diversamente)
-PLAYER_MODULE = "playerExampleNostroIbrido"   # <- adatta al nome del tuo file
+PLAYER_MODULE = "playerExampleNostroIbrido"
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# COSTANTI OUTPUT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_W         = 90    # larghezza righe separatori
+_BAR_MOVES = 25    # larghezza barra mosse in-game
+_SYM       = {"WIN": "✓ WIN ", "DRAW": "~ DRAW", "LOSS": "✗ LOSS"}
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Helpers interni
-# ──────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# UTILITIES OUTPUT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _bar(done: int, total: int, width: int) -> str:
+    filled = int(width * done / total) if total > 0 else 0
+    return "█" * filled + "░" * (width - filled)
+
+
+def _sep(char: str = "─") -> str:
+    return char * _W
+
+
+def _print_weights(weights: dict, label: str = "Pesi candidato"):
+    """Stampa i pesi in una riga compatta, abbreviando il prefisso _W_."""
+    parts = "  ".join(
+        f"{k.replace('_W_', '').replace('_', ' ')}: {v}"
+        for k, v in weights.items()
+    )
+    print(f"  [{label}]  {parts}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STRATEGIE
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def _apply_weights(module, weights: dict):
-    """Imposta i pesi globali nel modulo strategia."""
     for k, v in weights.items():
         setattr(module, k, v)
 
 
 def _make_candidate_strategy(weights: dict):
-    """
-    Ritorna una funzione strategy che usa i pesi dati.
-    Usa alpha-beta a profondità fissa (SEARCH_DEPTH) per velocità nel tuning.
-    """
+    """Costruisce la strategy del candidato con alpha-beta a profondità fissa."""
     import importlib
     mod = importlib.import_module(PLAYER_MODULE)
     _apply_weights(mod, weights)
@@ -185,11 +156,10 @@ def _make_candidate_strategy(weights: dict):
             if depth == 0 or game.is_terminal(state):
                 return mod.evaluate_state(game, state, root_player), None
             if not lm:
-                # Passa il turno se non ci sono mosse
                 passed = game.pass_turn(state)
                 return _ab(passed, depth - 1, alpha, beta, not maximizing)
 
-            ordered = mod.order_moves(game, lm)
+            ordered    = mod.order_moves(game, lm)
             best_moves = []
 
             if maximizing:
@@ -227,31 +197,39 @@ def _make_candidate_strategy(weights: dict):
     return strategy
 
 
-def _make_opponent_strategy(module_name: str):
-    """
-    Carica la strategia di un avversario del pool.
-    Usa direttamente playerStrategy del modulo importato.
-    """
+def _load_opponent_strategy(module_name: str):
     import importlib
     mod = importlib.import_module(module_name)
     return mod.playerStrategy
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Simulazione headless di una singola partita
-# ──────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# SIMULAZIONE SINGOLA PARTITA  (sequenziale, con barra mossa-per-mossa)
+# ═══════════════════════════════════════════════════════════════════════════════
 
-def simulate_game(
+def _simulate_game_live(
     strategy_red,
     strategy_blue,
+    prefix: str,
     seed: int = None,
-) -> str:
-    """Gioca una partita headless. Ritorna 'Red', 'Blue' o 'Draw'."""
+) -> tuple[str, int, float]:
+    """
+    Gioca una partita aggiornando una barra \r mossa per mossa.
+    'prefix' è il testo fisso a sinistra della barra (es. "Partita  3/10 [Candidato=Rosso]").
+
+    Ritorna (vincitore, numero_mosse, secondi).
+    """
     if seed is not None:
         random.seed(seed)
 
     game  = ZolaGame(size=8, first_player="Red")
     state = game.initial
+    moves = 0
+    t0    = time.perf_counter()
+
+    # Riga iniziale — senza \n, sarà sovrascritta ad ogni mossa
+    print(f"\r  {prefix}  [{_bar(0, MAX_MOVES, _BAR_MOVES)}]   0 mosse",
+          end="", flush=True)
 
     for _ in range(MAX_MOVES):
         if game.is_terminal(state):
@@ -262,263 +240,272 @@ def simulate_game(
             state = game.pass_turn(state)
             continue
 
-        if state.to_move == "Red":
-            move = strategy_red(game, state)
-        else:
-            move = strategy_blue(game, state)
-
+        move = (strategy_red if state.to_move == "Red" else strategy_blue)(game, state)
         if move is None or move not in legal:
             move = random.choice(legal)
 
-        state = game.result(state, move)
+        state  = game.result(state, move)
+        moves += 1
+
+        print(
+            f"\r  {prefix}  [{_bar(moves, MAX_MOVES, _BAR_MOVES)}] {moves:>3} mosse",
+            end="", flush=True,
+        )
+
+    elapsed = time.perf_counter() - t0
 
     winner = game.winner(state)
     if winner is None:
-        red_c  = state.count("Red")
-        blue_c = state.count("Blue")
-        if red_c > blue_c:
-            return "Red"
-        if blue_c > red_c:
-            return "Blue"
-        return "Draw"
-    return winner
+        rc, bc = state.count("Red"), state.count("Blue")
+        winner = "Red" if rc > bc else ("Blue" if bc > rc else "Draw")
+
+    return winner, moves, elapsed
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Wrapper pickle-able per ProcessPoolExecutor
-# ──────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# VALUTAZIONE CANDIDATO VS UN SINGOLO AVVERSARIO
+# ═══════════════════════════════════════════════════════════════════════════════
 
-def _run_single_game(args):
+def _evaluate_vs_one(
+    weights_cand: dict,
+    opp: dict,
+    n_games: int,
+    opp_idx: int,
+    total_opp: int,
+) -> float:
     """
-    args = (weights_cand, opponent_module, cand_is_red, seed, game_index, total_games)
-
-    Costruisce le due strategie nel processo figlio (sicuro con spawn/fork).
-    Ritorna (punti, info_stringa) con dettagli sulla partita giocata.
+    Gioca n_games partite sequenziali contro un avversario.
+    Ogni partita mostra una barra live, poi viene sovrascritta con la riga finale.
+    Ritorna il win-rate del candidato (0..1).
     """
-    weights_cand, opponent_module, cand_is_red, seed, game_index, total_games = args
-
+    opp_name      = opp["name"]
     cand_strategy = _make_candidate_strategy(weights_cand)
-    opp_strategy  = _make_opponent_strategy(opponent_module)
+    opp_strategy  = _load_opponent_strategy(opp["module"])
 
-    opp_short = opponent_module.split(".")[-1]   # solo il nome del file, senza package
+    # ── Intestazione blocco ──────────────────────────────────────────────────
+    print()
+    print(_sep("═"))
+    print(f"  Candidato  vs  {opp_name}  "
+          f"[{opp_idx}/{total_opp}]  peso {opp['weight']}  —  {n_games} partite")
+    print(_sep("─"))
 
-    if cand_is_red:
-        red_label  = f"Candidato"
-        blue_label = opp_short
-        winner = simulate_game(cand_strategy, opp_strategy, seed)
-        pt = 1.0 if winner == "Red" else (0.5 if winner == "Draw" else 0.0)
-        result_label = "WIN" if winner == "Red" else ("DRAW" if winner == "Draw" else "LOSS")
-    else:
-        red_label  = opp_short
-        blue_label = f"Candidato"
-        winner = simulate_game(opp_strategy, cand_strategy, seed)
-        pt = 1.0 if winner == "Blue" else (0.5 if winner == "Draw" else 0.0)
-        result_label = "WIN" if winner == "Blue" else ("DRAW" if winner == "Draw" else "LOSS")
+    half      = n_games // 2
+    total_pts = 0.0
 
-    info = (
-        f"[{game_index:>3}/{total_games}] "
-        f"Red: {red_label:<28} vs  Blue: {blue_label:<28}  "
-        f"→ vince {winner:<5}  ({result_label})"
+    # Metà partite: candidato = Red; restanti: candidato = Blue
+    games_plan = (
+        [(True,  i * 2)     for i in range(half)] +
+        [(False, i * 2 + 1) for i in range(n_games - half)]
     )
-    return pt, info
+
+    for game_num, (cand_is_red, seed) in enumerate(games_plan, start=1):
+        role    = "Rosso" if cand_is_red else "Blu  "
+        prefix  = f"Partita {game_num:>2}/{n_games}  [Candidato={role}]"
+
+        red_s, blue_s = (
+            (cand_strategy, opp_strategy) if cand_is_red
+            else (opp_strategy, cand_strategy)
+        )
+
+        # Esegui partita con barra live
+        winner, n_moves, elapsed = _simulate_game_live(red_s, blue_s, prefix, seed)
+
+        # Determina risultato dal punto di vista del candidato
+        if cand_is_red:
+            pt     = 1.0 if winner == "Red"  else (0.5 if winner == "Draw" else 0.0)
+            result = "WIN"  if winner == "Red"  else ("DRAW" if winner == "Draw" else "LOSS")
+        else:
+            pt     = 1.0 if winner == "Blue" else (0.5 if winner == "Draw" else 0.0)
+            result = "WIN"  if winner == "Blue" else ("DRAW" if winner == "Draw" else "LOSS")
+
+        total_pts += pt
+        wr_now     = total_pts / game_num
+        sym        = _SYM[result]
+
+        # Sovrascrive la barra con la riga definitiva (aggiunge \n)
+        move_bar = _bar(n_moves, MAX_MOVES, _BAR_MOVES)
+        print(
+            f"\r  Partita {game_num:>2}/{n_games}  [Candidato={role}]  "
+            f"[{move_bar}] {n_moves:>3} mosse  "
+            f"{elapsed:>5.1f}s  "
+            f"{sym}   wr: {wr_now:.2f}"
+        )
+
+    # ── Riepilogo blocco ─────────────────────────────────────────────────────
+    wr = total_pts / n_games
+    print(_sep("─"))
+    print(f"  Risultato vs {opp_name:<24}  "
+          f"punti: {total_pts:.1f}/{n_games}   win-rate: {wr:.3f}")
+    _print_weights(weights_cand)
+    print(_sep("─"))
+
+    return wr
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Valutazione del candidato contro l'intero pool
-# ──────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# VALUTAZIONE CANDIDATO VS INTERO POOL
+# ═══════════════════════════════════════════════════════════════════════════════
 
-def evaluate_candidate_vs_pool(weights_cand: dict, n_games: int, it: int) -> tuple[float, dict]:
+def evaluate_candidate_vs_pool(
+    weights_cand: dict,
+    n_games: int,
+    it: int,
+) -> tuple[float, dict]:
     """
-    Valuta il candidato contro tutti gli avversari del pool.
-
-    Ritorna:
-      (win_rate_pesato_globale, {nome_avversario: win_rate})
+    Valuta il candidato contro tutti gli avversari del pool in sequenza.
+    Ritorna (win_rate_pesato_globale, {nome_avversario: win_rate}).
     """
-    all_tasks = []
-    task_meta = []   # (opponent_name, opponent_weight)
-
-    total_games = len(OPPONENT_POOL) * n_games
-    game_index  = 0
-
-    for opp in OPPONENT_POOL:
-        half = n_games // 2
-        for i in range(half):
-            game_index += 1
-            all_tasks.append((weights_cand, opp["module"], True,  i * 2, game_index, total_games))
-            task_meta.append((opp["name"], opp["weight"]))
-        for i in range(n_games - half):
-            game_index += 1
-            all_tasks.append((weights_cand, opp["module"], False, i * 2 + 1, game_index, total_games))
-            task_meta.append((opp["name"], opp["weight"]))
-
-    points_by_opp = {opp["name"]: 0.0 for opp in OPPONENT_POOL}
-    games_by_opp  = {opp["name"]: 0   for opp in OPPONENT_POOL}
-    games_done    = 0
-
-    print(f"\n  Iterazione {it}/{MAX_ITERATIONS} – {total_games} partite in corso "
-          f"({len(OPPONENT_POOL)} avversari × {n_games} partite)")
-
-    with ProcessPoolExecutor(max_workers=WORKERS) as exe:
-        futures = {
-            exe.submit(_run_single_game, task): (task, meta)
-            for task, meta in zip(all_tasks, task_meta)
-        }
-
-        with tqdm(total=total_games, unit="partita", ncols=80,
-                  bar_format="  {l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]"
-                  ) as pbar:
-
-            for fut in as_completed(futures):
-                _, (opp_name, _) = futures[fut]
-                try:
-                    pt, info = fut.result()
-                    print(f"    {info}")
-                except Exception as exc:
-                    pt   = 0.5
-                    print(f"  [WARN] partita fallita ({opp_name}): {exc}")
-
-                points_by_opp[opp_name] += pt
-                games_by_opp[opp_name]  += 1
-                games_done += 1
-
-                # Aggiorna la barra con il win-rate parziale dell'avversario corrente
-                wr_now = points_by_opp[opp_name] / games_by_opp[opp_name]
-                pbar.set_postfix_str(f"vs {opp_name}: wr={wr_now:.2f}")
-                pbar.update(1)
-
-    # Win-rate per avversario
+    total_opp = len(OPPONENT_POOL)
     wr_by_opp = {}
-    for opp in OPPONENT_POOL:
-        name = opp["name"]
-        g    = games_by_opp[name]
-        wr_by_opp[name] = points_by_opp[name] / g if g > 0 else 0.5
 
-    # Win-rate globale pesato
-    total_weight = sum(opp["weight"] for opp in OPPONENT_POOL)
+    for idx, opp in enumerate(OPPONENT_POOL, start=1):
+        wr = _evaluate_vs_one(weights_cand, opp, n_games, idx, total_opp)
+        wr_by_opp[opp["name"]] = wr
+
+    total_weight = sum(o["weight"] for o in OPPONENT_POOL)
     weighted_wr  = sum(
-        wr_by_opp[opp["name"]] * opp["weight"]
-        for opp in OPPONENT_POOL
+        wr_by_opp[o["name"]] * o["weight"] for o in OPPONENT_POOL
     ) / total_weight
 
     return weighted_wr, wr_by_opp
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Perturbazione dei pesi
-# ──────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# PERTURBAZIONE DEI PESI
+# ═══════════════════════════════════════════════════════════════════════════════
 
-def perturb(weights: dict, n: int = PERTURB_N, rng: int = PERTURB_RANGE) -> dict:
-    """Genera un candidato perturbando n pesi scelti a caso."""
+def perturb(weights: dict) -> dict:
     candidate = weights.copy()
-    keys = random.sample(list(weights.keys()), k=min(n, len(weights)))
+    keys = random.sample(list(weights.keys()), k=min(PERTURB_N, len(weights)))
     for k in keys:
-        delta = random.randint(-rng, rng)
-        candidate[k] = max(1, candidate[k] + delta)
+        candidate[k] = max(1, candidate[k] + random.randint(-PERTURB_RANGE, PERTURB_RANGE))
     return candidate
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Hill climbing principale
-# ──────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# HILL CLIMBING PRINCIPALE
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def hill_climb():
-    print("=" * 68)
+    # ── Banner iniziale ──────────────────────────────────────────────────────
+    print(_sep("═"))
     print("  Ottimizzazione pesi – Hill Climbing con pool di avversari")
-    print("=" * 68)
-    print(f"  Player da ottimizzare : {PLAYER_MODULE}")
-    print(f"  Avversari nel pool    : {len(OPPONENT_POOL)}")
+    print(_sep("═"))
+    print(f"  Player        : {PLAYER_MODULE}")
+    print(f"  Avversari     : {len(OPPONENT_POOL)}")
     for opp in OPPONENT_POOL:
-        print(f"    • {opp['name']:<20} (peso {opp['weight']})")
-    print(f"  Partite/avversario    : {GAMES_PER_EVAL}")
-    print(f"  Iterazioni max        : {MAX_ITERATIONS}")
-    print(f"  Profondità alpha-beta : {SEARCH_DEPTH}")
-    print(f"  Worker paralleli      : {WORKERS}")
-    print(f"  Min win-rate (pesato) : {MIN_WIN_RATE:.0%}")
-    print("=" * 68)
+        print(f"    • {opp['name']:<28}  peso {opp['weight']}")
+    print(f"  Partite/opp   : {GAMES_PER_EVAL}")
+    print(f"  Iterazioni    : {MAX_ITERATIONS}")
+    print(f"  Depth AB      : {SEARCH_DEPTH}")
+    print(f"  Min win-rate  : {MIN_WIN_RATE:.0%}")
+    print(_sep("═"))
 
-    current  = BASE_WEIGHTS.copy()
-    best     = current.copy()
-    best_wr  = 0.0
+    current = BASE_WEIGHTS.copy()
+    best    = current.copy()
+    best_wr = 0.0
+    history = []
 
-    history  = []
-
-    iter_bar = tqdm(range(1, MAX_ITERATIONS + 1), unit="iter", ncols=80,
-                    bar_format="  Iterazioni: {l_bar}{bar}| {n_fmt}/{total_fmt}")
-
-    for it in iter_bar:
+    for it in range(1, MAX_ITERATIONS + 1):
         t0        = time.perf_counter()
         candidate = perturb(current)
 
-        changed     = {k: (current[k], candidate[k])
-                       for k in candidate if candidate[k] != current[k]}
-        changed_str = "  ".join(f"{k}: {v[0]}→{v[1]}" for k, v in changed.items())
+        changed = {k: (current[k], candidate[k])
+                   for k in candidate if candidate[k] != current[k]}
 
+        # ── Intestazione iterazione ──────────────────────────────────────────
+        print()
+        print(_sep("═"))
+        print(f"  ITERAZIONE {it}/{MAX_ITERATIONS}")
+        if changed:
+            for k, (old, new) in changed.items():
+                arrow = "▲" if new > old else "▼"
+                print(f"    {arrow}  {k:<28}  {old:>4}  →  {new:>4}")
+        else:
+            print("    (nessuna modifica ai pesi)")
+        print(_sep("═"))
+
+        # ── Esecuzione contro il pool ────────────────────────────────────────
         wr, wr_detail = evaluate_candidate_vs_pool(candidate, GAMES_PER_EVAL, it)
         elapsed       = time.perf_counter() - t0
+        accepted      = wr >= MIN_WIN_RATE
+        tag           = "✓ ACCETTATO" if accepted else "✗ rifiutato"
 
-        accepted = wr >= MIN_WIN_RATE
-        tag      = "✓ accettato" if accepted else "✗ rifiutato"
-
-        print(f"\n[{it:3d}/{MAX_ITERATIONS}]  wr_pesato={wr:.3f}  {tag}  ({elapsed:.1f}s)")
-        if changed_str:
-            print(f"  modifiche: {changed_str}")
+        # ── Riepilogo iterazione ─────────────────────────────────────────────
+        print()
+        print(_sep("═"))
+        print(f"  FINE ITERAZIONE {it}/{MAX_ITERATIONS}  │  "
+              f"wr pesato = {wr:.3f}  │  {tag}  │  {elapsed:.0f}s")
+        print(_sep("─"))
+        print(f"  {'Avversario':<28}  {'WR':>6}  {'Peso':>5}")
+        print(f"  {'─'*28}  {'─'*6}  {'─'*5}")
         for opp in OPPONENT_POOL:
             name = opp["name"]
-            print(f"  vs {name:<22} wr={wr_detail[name]:.3f}")
+            bar  = "●" * round(wr_detail[name] * 10)
+            print(f"  {name:<28}  {wr_detail[name]:>6.3f}  {opp['weight']:>5.1f}  {bar}")
+        print(f"  {'─'*28}  {'─'*6}  {'─'*5}")
+        print(f"  {'WR PESATO TOTALE':<28}  {wr:>6.3f}")
+        print(_sep("─"))
 
         if accepted:
             current = candidate
             if wr > best_wr:
                 best    = candidate.copy()
                 best_wr = wr
-                print(f"  ★ Nuovo miglior set (wr_pesato={best_wr:.3f})")
+                print(f"  ★  Nuovo miglior set di pesi  (wr = {best_wr:.3f})")
 
-        iter_bar.set_postfix_str(f"best_wr={best_wr:.3f}")
+        print(f"  Best globale finora: {best_wr:.3f}")
+        print(_sep("═"))
 
         history.append({
-            "iter":       it,
-            "win_rate":   round(wr, 4),
-            "wr_detail":  {k: round(v, 4) for k, v in wr_detail.items()},
-            "accepted":   accepted,
-            "weights":    candidate.copy(),
+            "iter":      it,
+            "win_rate":  round(wr, 4),
+            "wr_detail": {k: round(v, 4) for k, v in wr_detail.items()},
+            "accepted":  accepted,
+            "weights":   candidate.copy(),
         })
 
-    # ── risultati finali ─────────────────────────────────────────────────────
-    print("\n" + "=" * 68)
+    # ── Risultati finali ─────────────────────────────────────────────────────
+    print()
+    print(_sep("═"))
     print("  OTTIMIZZAZIONE COMPLETATA")
-    print("=" * 68)
-    print(f"  Miglior win-rate pesato registrato: {best_wr:.3f}")
-    print("\n  Pesi ottimali:")
+    print(_sep("═"))
+    print(f"  Miglior win-rate pesato: {best_wr:.3f}")
+    print()
+    print(f"  {'Peso':<28}  {'Ottimale':>8}  {'Base':>5}  {'Delta':>6}")
+    print(f"  {'─'*28}  {'─'*8}  {'─'*5}  {'─'*6}")
     for k, v in best.items():
         orig = BASE_WEIGHTS[k]
         diff = v - orig
         sign = f"+{diff}" if diff >= 0 else str(diff)
-        print(f"    {k:<26} = {v:>4}   (base {orig:>3}, {sign})")
+        print(f"  {k:<28}  {v:>8}  {orig:>5}  {sign:>6}")
 
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "best_weights.json")
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump({
-            "best_weights":   best,
-            "best_win_rate":  best_wr,
-            "base_weights":   BASE_WEIGHTS,
-            "pool":           [{"name": o["name"], "weight": o["weight"]}
-                                for o in OPPONENT_POOL],
-            "history":        history,
+            "best_weights":  best,
+            "best_win_rate": best_wr,
+            "base_weights":  BASE_WEIGHTS,
+            "pool":          [{"name": o["name"], "weight": o["weight"]}
+                               for o in OPPONENT_POOL],
+            "history":       history,
         }, f, indent=2)
 
-    print(f"\n  Risultati salvati in: {out_path}")
-    print("\n  Copia questi valori nel tuo player:")
-    print("  " + "-" * 52)
+    print()
+    print(f"  Salvato in: {out_path}")
+    print()
+    print("  Copia nel tuo player:")
+    print("  " + _sep("-"))
     for k, v in best.items():
-        print(f"  {k:<26} = {v}")
-    print("  " + "-" * 52)
+        print(f"  {k:<28} = {v}")
+    print("  " + _sep("-"))
 
     return best
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Entry point
-# ──────────────────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# ENTRY POINT
+# ═══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     from multiprocessing import freeze_support
