@@ -19,9 +19,10 @@ Player fin'ora implementati:
 '''
 
 #import playerExampleRandom as playerBmodule
-import playerExampleNostroEU as playerBmodule
+#import playerExampleNostroEU as playerBmodule
 #import playerExampleAlpha as playerRmodule
-import playerExampleNostroEU_primaDiMichael as playerRmodule
+import playerExampleNostroEU_primaDiMichael as playerBmodule
+import playerExampleNostroIbrido as playerRmodule
 # #######################
 
 class Game:

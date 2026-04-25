@@ -250,12 +250,8 @@ def evaluate_state(game, state, root_player):
         - _move_outer_bonus(game, opp_noncaps)
     )
 
-    # P3: pressione nelle zone esterne
-    '''outer_pressure = (
-        _outer_pressure_bonus(game, state, root_player)
-        - _outer_pressure_bonus(game, state, opponent)
-    )'''
-
+   
+    #P3
     threat_pressure = (
     _capture_threat_score(game, state, root_player)
     - _capture_threat_score(game, state, opponent)
