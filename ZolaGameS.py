@@ -18,11 +18,10 @@ Player fin'ora implementati:
 - playerExampleNostroMC gioca con Montecarlo - attualmente in fase di modifica da parte di giuseppe
 '''
 
-#import playerExampleRandom as playerBmodule
-import playerExampleNostroEU as playerBmodule
-#import playerExampleAlpha as playerRmodule
-import playerExampleNostroEU_primaDiMichael as playerRmodule
-# #######################
+########## SETTING DEI GIOCATORI  ##################
+import playerExampleNostroEU as playerRmodule
+import playerExampleNostroEU_primaDiMichael as playerBmodule
+############################################################
 
 class Game:
     """Classe astratta per giochi a due giocatori."""
