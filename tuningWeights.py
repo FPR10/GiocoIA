@@ -36,52 +36,25 @@ from ZolaGameS import ZolaGame
 # ═══════════════════════════════════════════════════════════════════════════════
 
 OPPONENT_POOL = [
-    {
-        "name":   "Random",
-        "module": "playerProfessore.playerExampleRandom",
-        "weight": 0.5,
-    },
-    {
-        "name":   "AlphaBetaProfessore",
-        "module": "playerProfessore.playerExampleAlpha",
-        "weight": 1.0,
-    },
+
     {
         "name":   "Nostro v1",
         "module": "vecchiPlayerEuristici.playerExampleNostro_v1",
         "weight": 1.5,
     },
-    {
-        "name":   "Nostro v2",
-        "module": "vecchiPlayerEuristici.playerExampleNostro_v2",
-        "weight": 1.5,
-    },
-    {
-        "name":   "Nostro EU",
-        "module": "vecchiPlayerEuristici.playerExampleNostroEU",
-        "weight": 1.5,
-    },
-    {
-        "name":   "Montecarlo",
-        "module": "vecchiPlayerMonteCarlo.playerExampleNostroMC",
-        "weight": 1.5,
-    },
-    {
-        "name":   "Regola standard 2",
-        "module": "playerExampleNostroRegolaStandard2",
-        "weight": 2.0,
-    },
+    
+    
 ]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIG
 # ═══════════════════════════════════════════════════════════════════════════════
 
-GAMES_PER_EVAL  = 10     # partite per ogni coppia candidato-avversario
-MAX_ITERATIONS  = 40     # iterazioni totali hill-climbing
-SEARCH_DEPTH    = 2      # profondità alpha-beta nelle partite headless
+GAMES_PER_EVAL  = 6     # partite per ogni coppia candidato-avversario
+MAX_ITERATIONS  = 30     # iterazioni totali hill-climbing
+SEARCH_DEPTH    = 3      # profondità alpha-beta nelle partite headless
 MAX_MOVES       = 400    # mosse massime per partita (anti-loop)
-MIN_WIN_RATE    = 0.52   # soglia minima per accettare il candidato
+MIN_WIN_RATE    = 0.60   # soglia minima per accettare il candidato
 PERTURB_N       = 2      # quanti pesi perturbare per iterazione
 PERTURB_RANGE   = 8      # perturbazione massima ± per ogni peso
 
