@@ -4,7 +4,7 @@ import random
 from ZolaGameS import ZolaGame  # <-- CAMBIA con il nome del tuo file
 
 import provaFra as playerA
-import playerExampleNostroIbrido2 as playerB
+import provaFra2 as playerB
 
 
 NUM_GAMES = 10

@@ -26,13 +26,13 @@ _TIME_MARGIN = 0.15
 # ─────────────────────────────────────────────────────────────────────────────
 
 _W_PIECES             = 80    # differenza pedine residue
-_W_MOBILITY           = 6    # differenza mosse legali disponibili
-_W_CAPTURE_COUNT      = 10    # differenza numero catture disponibili
+_W_MOBILITY           = 9     # differenza mosse legali disponibili
+_W_CAPTURE_COUNT      = 2    # differenza numero catture disponibili
 
 _W_POSITION           = 6     # valore posizionale assoluto (livello esponenziale)
 _W_CAPTURE_OUTER      = 1     # P1: catture verso livelli esterni
 _W_THREAT_PRESSURE    = 1     # P3: qualità delle catture disponibili
-_W_CAPTURE_DANGEROUS  = 2     # P4: cattura pedine pericolose
+_W_CAPTURE_DANGEROUS  = 1     # P4: cattura pedine pericolose
 _W_CORNER_SETUP       = 4     # P5: setup verso angoli/periferia
 
 
