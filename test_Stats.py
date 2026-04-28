@@ -3,8 +3,8 @@ import random
 
 from ZolaGameS import ZolaGame  # <-- CAMBIA con il nome del tuo file
 
-import vecchiPlayerMonteCarlo.playerExampleNostroMC as playerA
-import provaFra2 as playerB
+from vecchiPlayerEuristici import playerExampleNostroEU  as playerA
+import GiocoIA.playerPaRuRa as playerB
 
 
 NUM_GAMES = 15

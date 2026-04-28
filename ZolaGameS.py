@@ -19,8 +19,8 @@ Player fin'ora implementati:
 '''
 
 ########## SETTING DEI GIOCATORI  ##################
-import provaFra2 as playerRmodule
-import playerExampleNostroIbrido2 as playerBmodule
+import GiocoIA.vecchiPlayerEuristici.provaFra as playerRmodule
+import GiocoIA.vecchiPlayerEuristici.provaFra3 as playerBmodule
 ############################################################
 
 class Game:
