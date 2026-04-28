@@ -3,7 +3,7 @@ import random
 
 from ZolaGameS import ZolaGame  # <-- CAMBIA con il nome del tuo file
 
-import playerExampleNostroIbridoMichael as playerA
+import provaFra as playerA
 import playerExampleNostroIbrido2 as playerB
 
 
