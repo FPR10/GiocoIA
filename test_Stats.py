@@ -3,11 +3,11 @@ import random
 
 from ZolaGameS import ZolaGame  # <-- CAMBIA con il nome del tuo file
 
-import provaFra as playerA
-import provaFra2 as playerB
+import playerStrong as playerA
+import playerPaRuRa as playerB
 
 
-NUM_GAMES = 10
+NUM_GAMES = 15
 TIMEOUT = 3
 
 

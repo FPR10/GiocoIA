@@ -3,19 +3,20 @@ import random
 import time
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Zola AI - Versione ibrida v2
+# Zola AI - Strategia con iterative deepening e alpha-beta pruning
 #
-# La valutazione posizionale uso il livello ASSULUTO di destinazione, pesato esponenzialmente.
-# Livello 9 vale molto più di livello 8, indipendentemente da dove la pedina si trovava prima.
-# L'ordinamento delle mosse ora usa prima il livello assoluto di destinazione (decrescente), poi il delta come criterio secondario.
+# La valutazione posizionale usa il livello ASSOLUTO di destinazione,
+# pesato esponenzialmente: livello 9 vale molto più di livello 8,
+# indipendentemente da dove la pedina si trovava prima.
+# L'ordinamento delle mosse usa prima il livello assoluto di destinazione
+# (decrescente), poi il delta come criterio secondario.
 #
-#
-# Manteniamo:
+# Caratteristiche principali:
 #   • iterative deepening
 #   • alpha-beta pruning con timeout sicuro
 #   • gestione corretta del passaggio turno
-#   • P3 tattica (qualità catture)
-#   • P4 cattura pedine pericolose
+#   • R1: valutazione tattica (qualità catture)
+#   • R2: cattura pedine pericolose
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -30,10 +31,10 @@ _W_MOBILITY           = 9     # differenza mosse legali disponibili
 _W_CAPTURE_COUNT      = 2    # differenza numero catture disponibili
 
 _W_POSITION           = 6     # valore posizionale assoluto (livello esponenziale)
-_W_CAPTURE_OUTER      = 1     # P1: catture verso livelli esterni
-_W_THREAT_PRESSURE    = 1     # P3: qualità delle catture disponibili
-_W_CAPTURE_DANGEROUS  = 1     # P4: cattura pedine pericolose
-_W_CORNER_SETUP       = 4     # P5: setup verso angoli/periferia
+_W_CAPTURE_OUTER      = 1     # R1: catture verso livelli esterni
+_W_THREAT_PRESSURE    = 1     # R2: qualità delle catture disponibili
+_W_CAPTURE_DANGEROUS  = 1     # R3: cattura pedine pericolose
+_W_CORNER_SETUP       = 4     # R4: setup verso angoli/periferia
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -53,9 +54,9 @@ def _positional_value(game, state, player):
     """
     Valore posizionale assoluto: somma esponenziale dei livelli occupati.
 
-    Usare livello^2 (o livello^1.5) invece di livello lineare garantisce
-    che raggiungere un angolo (livello 9) valga molto più che stare
-    su livello 8, anche se il delta è identico.
+    Usare livello^2 invece di livello lineare garantisce che raggiungere
+    un angolo (livello 9) valga molto più che stare su livello 8,
+    anche se il delta è identico.
 
     Il vantaggio posizionale è la differenza tra i valori dei due giocatori.
     """
@@ -78,13 +79,13 @@ def _positional_value(game, state, player):
 
 
 def _capture_outer_bonus(game, captures):
-    """P1: premia catture verso celle più esterne (livello assoluto)."""
+    """R1: premia catture verso celle più esterne (livello assoluto)."""
     return sum(_level(game, tr, tc) for (_, (tr, tc), _) in captures)
 
 
 def _capture_threat_score_from_caps(game, captures):
     """
-    P3: pressione tattica tramite qualità delle catture disponibili.
+    R2: pressione tattica tramite qualità delle catture disponibili.
     Premia catture fatte da pedine esterne e verso pedine più interne.
     """
     score = 0
@@ -99,7 +100,7 @@ def _capture_threat_score_from_caps(game, captures):
 
 def _capture_dangerous_piece_bonus_from_moves(game, captures, opponent_moves):
     """
-    P4: premia catture di pedine avversarie pericolose.
+    R3: premia catture di pedine avversarie pericolose.
     Una pedina è pericolosa se ha almeno una cattura disponibile.
     """
     threatening_pieces = {
@@ -119,7 +120,7 @@ def _capture_dangerous_piece_bonus_from_moves(game, captures, opponent_moves):
 
 def _corner_setup_bonus_limited(game, state, player, non_captures):
     """
-    P5: setup verso angoli/periferia.
+    R4: setup verso angoli/periferia.
     Analizza le 8 mosse non catturanti più orientate verso l'esterno
     e premia quelle che aprono catture verso celle di livello alto.
     """
@@ -129,7 +130,7 @@ def _corner_setup_bonus_limited(game, state, player, non_captures):
     max_level = _max_level(game)
     threshold = max_level - 1
 
-    # Ordiniamo per livello ASSOLUTO di destinazione (fix del bug)
+    # Ordiniamo per livello ASSOLUTO di destinazione
     candidates = sorted(
         non_captures,
         key=lambda m: _level(game, m[1][0], m[1][1]),
@@ -178,25 +179,25 @@ def evaluate_state(game, state, root_player):
     # Valore posizionale assoluto (livello² sommato su tutte le pedine)
     positional = _positional_value(game, state, root_player)
 
-    # P1: catture verso livelli esterni
+    # R1: catture verso livelli esterni
     cap_outer = (
         _capture_outer_bonus(game, root_caps)
         - _capture_outer_bonus(game, opp_caps)
     )
 
-    # P3: pressione tattica tramite qualità delle catture
+    # R2: pressione tattica tramite qualità delle catture
     threat_pressure = (
         _capture_threat_score_from_caps(game, root_caps)
         - _capture_threat_score_from_caps(game, opp_caps)
     )
 
-    # P4: cattura pedine pericolose
+    # R3: cattura pedine pericolose
     capture_dangerous = (
         _capture_dangerous_piece_bonus_from_moves(game, root_caps, opp_moves)
         - _capture_dangerous_piece_bonus_from_moves(game, opp_caps, root_moves)
     )
 
-    # P5: setup verso angoli/periferia
+    # R4: setup verso angoli/periferia
     corner_setup = _corner_setup_bonus_limited(
         game, state, root_player, root_noncaps
     )
@@ -216,7 +217,7 @@ def evaluate_state(game, state, root_player):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Ordinamento mosse  ← FIX PRINCIPALE
+# Ordinamento mosse
 # ─────────────────────────────────────────────────────────────────────────────
 
 def order_moves(game, moves):
@@ -227,13 +228,11 @@ def order_moves(game, moves):
       1. catture (is_capture=True) prima delle non-catture;
       2. tra le catture: prima quelle verso destinazioni di livello più alto;
       3. tra le non-catture: prima quelle verso destinazioni di livello più alto
-         (FIX: era ordinato per delta = dst-src, ora usiamo dst assoluto).
-         Il delta è usato solo come criterio secondario.
+         (livello assoluto come criterio primario, delta come secondario).
 
-    Questo risolve il bug per cui una pedina a livello 6 preferiva spostarsi
-    sulla cella liberata a livello 8 (delta=2) invece che sull'angolo a
-    livello 9 (delta=3): entrambe avevano delta positivo, ma il livello
-    assoluto dell'angolo è maggiore e ora vince come criterio primario.
+    Questo garantisce che una pedina preferisca spostarsi verso l'angolo
+    a livello 9 piuttosto che su una cella a livello 8, indipendentemente
+    dal delta.
     """
     def move_priority(move):
         (fr, fc), (tr, tc), is_capture = move
@@ -328,7 +327,7 @@ def _alphabeta(game, state, depth, alpha, beta, maximizing, root_player, deadlin
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Entry point richiesto dalla competizione
+# Entry point
 # ─────────────────────────────────────────────────────────────────────────────
 
 def playerStrategy(game, state, timeout=3):
