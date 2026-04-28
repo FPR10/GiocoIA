@@ -3,7 +3,7 @@ import random
 
 from ZolaGameS import ZolaGame  # <-- CAMBIA con il nome del tuo file
 
-import playerStrong as playerA
+from vecchiPlayerEuristici import playerExampleNostroEU  as playerA
 import playerPaRuRa as playerB
 
 
