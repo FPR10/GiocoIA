@@ -1,6 +1,6 @@
-# Zola AI — Giocatore Ibrido v2
+# Zola AI — Giocatore Ibrido v2 (`playerPRR`)
 
-**File:** `playerExampleNostroIbrido2.py`  
+**File:** `playerPRR.py`  
 **Gioco:** Zola (scacchiera 8×8, due giocatori)  
 **Algoritmo di base:** Minimax con Alpha-Beta Pruning + Iterative Deepening
 
@@ -9,17 +9,18 @@
 ## Indice
 
 1. [Il gioco Zola — Contesto](#1-il-gioco-zola--contesto)
-2. [Architettura del giocatore](#2-architettura-del-giocatore)
-3. [Sistema dei livelli di distanza](#3-sistema-dei-livelli-di-distanza)
-4. [Funzione di valutazione euristica](#4-funzione-di-valutazione-euristica)
-5. [Componenti euristiche nel dettaglio](#5-componenti-euristiche-nel-dettaglio)
-6. [Ordinamento delle mosse](#6-ordinamento-delle-mosse)
-7. [Algoritmo Alpha-Beta con gestione del timeout](#7-algoritmo-alpha-beta-con-gestione-del-timeout)
-8. [Iterative Deepening](#8-iterative-deepening)
-9. [Il fix principale rispetto alla v1](#9-il-fix-principale-rispetto-alla-v1)
-10. [Costanti e pesi](#10-costanti-e-pesi)
-11. [Entry point — `playerStrategy`](#11-entry-point--playerstrategy)
-12. [Flusso completo di esecuzione](#12-flusso-completo-di-esecuzione)
+2. [Regole di gioco strategiche](#2-regole-di-gioco-strategiche)
+3. [Architettura del giocatore](#3-architettura-del-giocatore)
+4. [Sistema dei livelli di distanza](#4-sistema-dei-livelli-di-distanza)
+5. [Funzione di valutazione euristica](#5-funzione-di-valutazione-euristica)
+6. [Componenti euristiche nel dettaglio](#6-componenti-euristiche-nel-dettaglio)
+7. [Ordinamento delle mosse](#7-ordinamento-delle-mosse)
+8. [Algoritmo Alpha-Beta con gestione del timeout](#8-algoritmo-alpha-beta-con-gestione-del-timeout)
+9. [Iterative Deepening](#9-iterative-deepening)
+10. [Il fix principale rispetto alla v1](#10-il-fix-principale-rispetto-alla-v1)
+11. [Costanti e pesi](#11-costanti-e-pesi)
+12. [Entry point — `playerStrategy`](#12-entry-point--playerstrategy)
+13. [Flusso completo di esecuzione](#13-flusso-completo-di-esecuzione)
 
 ---
 
@@ -36,7 +37,88 @@ Se un giocatore non ha mosse legali, **salta il turno** automaticamente. Vince c
 
 ---
 
-## 2. Architettura del giocatore
+## 2. Regole di gioco strategiche
+
+Dalla struttura dell'euristica di `playerPRR` emergono principi strategici precisi che guidano ogni decisione. Queste non sono semplici linee guida generali, ma regole ricavate direttamente dai pesi e dalle funzioni di valutazione implementate.
+
+### Regola 1 — Conserva le pedine sopra ogni altra considerazione
+
+Il peso assegnato alla differenza di materiale (`_W_PIECES = 80`) supera di gran lunga tutti gli altri criteri combinati. Ne consegue una regola fondamentale:
+
+> **Non sacrificare mai una pedina in cambio di un vantaggio posizionale, di mobilità o di pressione tattica.** Perdere una pedina in più dell'avversario porta una penalità di 80 punti, che nessuna combinazione degli altri fattori riesce a compensare.
+
+---
+
+### Regola 2 — Occupa gli angoli e la periferia
+
+La valutazione posizionale usa il **quadrato del livello** di ogni cella occupata (`lv²`). Questo crea una gerarchia netta:
+
+| Posizione         | Livello | Valore posizionale |
+|-------------------|---------|--------------------|
+| Centro            | 1       | 1                  |
+| Zona intermedia   | 5       | 25                 |
+| Bordo             | 8       | 64                 |
+| Angolo            | 9       | **81**             |
+
+> **Sposta le pedine verso la periferia e, in particolare, verso gli angoli.** Un angolo vale 81 volte più del centro. Una pedina in angolo minaccia metà scacchiera con le sue catture e non può essere raggiunta da mosse di movimento avversarie.
+
+---
+
+### Regola 3 — Privilegia sempre le catture rispetto ai movimenti
+
+L'ordinamento delle mosse posiziona tutte le catture **prima** di qualsiasi mossa non catturante. Questa scelta non è solo algoritmica, ma riflette un principio strategico:
+
+> **Se hai una cattura disponibile, esplorala prima di qualsiasi spostamento.** Le catture eliminano materiale avversario (il criterio più pesante), aprono linee di attacco e, nella maggior parte dei casi, sono mosse localmente dominanti.
+
+---
+
+### Regola 4 — Elimina prima le pedine avversarie pericolose
+
+La componente P4 (`_capture_dangerous_piece_bonus_from_moves`) identifica le pedine nemiche che hanno almeno una cattura disponibile e assegna un bonus di +12 alla loro eliminazione.
+
+> **Quando puoi scegliere chi catturare, dai priorità alle pedine avversarie che hanno a loro volta catture disponibili.** Eliminare una minaccia immediata evita che l'avversario esegua la sua cattura al turno successivo, guadagnando un doppio vantaggio: si riduce il materiale nemico e si neutralizza un attacco imminente.
+
+---
+
+### Regola 5 — Cattura verso la periferia, non verso il centro
+
+Le componenti P1 (`_capture_outer_bonus`) e l'ordinamento delle catture privilegiano destinazioni di livello assoluto più alto. Una cattura che porta la pedina catturante verso un angolo vale più di una cattura che la riporta al centro.
+
+> **Quando hai più catture possibili, preferisci quella che ti lascia in una posizione più periferica.** Catturare "verso l'esterno" cumula il vantaggio materiale (una pedina avversaria eliminata) con un miglioramento posizionale immediato.
+
+---
+
+### Regola 6 — Muoviti per aprire catture verso le celle più alte
+
+La componente P5 (`_corner_setup_bonus_limited`) valuta le mosse non catturanti guardando un passo avanti: premia i movimenti che, dopo essere stati eseguiti, aprono nuove catture verso celle di livello ≥ 8.
+
+> **Se non hai catture disponibili, muoviti nella posizione che massimizza le catture verso angoli e bordi nel turno successivo.** Ogni mossa non catturante è un investimento: valgono di più le mosse che "caricano" offensive verso la periferia.
+
+---
+
+### Regola 7 — Mantieni la mobilità e la pressione tattica
+
+Le componenti di mobilità (`_W_MOBILITY = 9`) e conteggio catture (`_W_CAPTURE_COUNT = 2`) premiano avere più opzioni dell'avversario, anche quando non si sta catturando.
+
+> **Evita posizioni in cui le tue pedine sono bloccate o hanno poche mosse legali.** La mobilità superiore garantisce flessibilità tattica e forza l'avversario a subire la tua iniziativa; avere più catture disponibili dell'avversario è un segnale diretto di pressione offensiva superiore.
+
+---
+
+### Riepilogo gerarchico delle priorità
+
+```
+1. Non perdere pedine          (peso 80 — domina tutto)
+2. Occupare angoli/periferia   (peso quadratico sul livello)
+3. Catturare prima di muoversi (ordinamento mosse)
+4. Eliminare pedine pericolose (bonus +12 per minacce attive)
+5. Catturare verso l'esterno   (P1 + ordinamento catture per dst_level)
+6. Prepararsi per catture alte (P5 — look-ahead di 1 mossa)
+7. Mantenere mobilità          (peso 9 sulla differenza mosse)
+```
+
+---
+
+## 3. Architettura del giocatore
 
 Il giocatore è strutturato in quattro strati logici:
 
@@ -54,7 +136,7 @@ playerStrategy()          ← entry point: iterative deepening + gestione timeou
 
 ---
 
-## 3. Sistema dei livelli di distanza
+## 4. Sistema dei livelli di distanza
 
 La scacchiera è organizzata in **livelli concentrici** calcolati dalla distanza euclidea dal centro. Su una scacchiera 8×8 i livelli vanno da 1 (centro) a 9 (angoli):
 
@@ -83,7 +165,7 @@ def _max_level(game):
 
 ---
 
-## 4. Funzione di valutazione euristica
+## 5. Funzione di valutazione euristica
 
 `evaluate_state(game, state, root_player)` è il cuore del giocatore. Viene chiamata su ogni nodo foglia dell'albero di ricerca (quando si raggiunge la profondità massima o uno stato terminale).
 
@@ -112,9 +194,9 @@ score = (
 
 ---
 
-## 5. Componenti euristiche nel dettaglio
+## 6. Componenti euristiche nel dettaglio
 
-### 5.1 Differenza pedine (`_W_PIECES = 80`)
+### 6.1 Differenza pedine (`_W_PIECES = 80`)
 
 ```python
 root_pieces - opp_pieces
@@ -124,17 +206,17 @@ Il componente con peso maggiore. Avere più pedine dell'avversario è il criteri
 
 ---
 
-### 5.2 Mobilità (`_W_MOBILITY = 2`)
+### 6.2 Mobilità (`_W_MOBILITY = 9`)
 
 ```python
 len(root_moves) - len(opp_moves)
 ```
 
-Avere più mosse legali a disposizione è un segnale di controllo della scacchiera. Il peso è basso (2) perché la mobilità è un indicatore indiretto, non un obiettivo primario.
+Avere più mosse legali a disposizione è un segnale di controllo della scacchiera. Il peso (9) riflette l'importanza della flessibilità tattica.
 
 ---
 
-### 5.3 Conteggio catture disponibili (`_W_CAPTURE_COUNT = 10`)
+### 6.3 Conteggio catture disponibili (`_W_CAPTURE_COUNT = 2`)
 
 ```python
 len(root_caps) - len(opp_caps)
@@ -144,7 +226,7 @@ Distingue la mobilità generica dal potenziale offensivo immediato. Avere più c
 
 ---
 
-### 5.4 Valore posizionale assoluto — `_positional_value` (`_W_POSITION = 6`)
+### 6.4 Valore posizionale assoluto — `_positional_value` (`_W_POSITION = 6`)
 
 ```python
 def _positional_value(game, state, player):
@@ -166,11 +248,11 @@ def _positional_value(game, state, player):
 | 8       | 8             | 64                |
 | 9       | 9             | **81**            |
 
-Questo è il **fix principale** rispetto alla v1 (vedi Sezione 9).
+Questo è il **fix principale** rispetto alla v1 (vedi Sezione 10).
 
 ---
 
-### 5.5 P1 — Catture verso livelli esterni — `_capture_outer_bonus` (`_W_CAPTURE_OUTER = 5`)
+### 6.5 P1 — Catture verso livelli esterni — `_capture_outer_bonus` (`_W_CAPTURE_OUTER = 1`)
 
 ```python
 def _capture_outer_bonus(game, captures):
@@ -181,7 +263,7 @@ Premia le catture che atterrano su celle di livello alto (periferiche). Una catt
 
 ---
 
-### 5.6 P3 — Pressione tattica — `_capture_threat_score_from_caps` (`_W_THREAT_PRESSURE = 1`)
+### 6.6 P3 — Pressione tattica — `_capture_threat_score_from_caps` (`_W_THREAT_PRESSURE = 1`)
 
 ```python
 def _capture_threat_score_from_caps(game, captures):
@@ -199,7 +281,7 @@ Valuta la **qualità** delle catture disponibili secondo due criteri combinati:
 
 ---
 
-### 5.7 P4 — Cattura pedine pericolose — `_capture_dangerous_piece_bonus_from_moves` (`_W_CAPTURE_DANGEROUS = 2`)
+### 6.7 P4 — Cattura pedine pericolose — `_capture_dangerous_piece_bonus_from_moves` (`_W_CAPTURE_DANGEROUS = 1`)
 
 ```python
 def _capture_dangerous_piece_bonus_from_moves(game, captures, opponent_moves):
@@ -219,7 +301,7 @@ Identifica le **pedine avversarie pericolose**, ovvero quelle che hanno almeno u
 
 ---
 
-### 5.8 P5 — Setup verso angoli — `_corner_setup_bonus_limited` (`_W_CORNER_SETUP = 4`)
+### 6.8 P5 — Setup verso angoli — `_corner_setup_bonus_limited` (`_W_CORNER_SETUP = 4`)
 
 ```python
 def _corner_setup_bonus_limited(game, state, player, non_captures):
@@ -243,7 +325,7 @@ Questa euristica guarda **un passo avanti** rispetto alle mosse non catturanti: 
 
 ---
 
-## 6. Ordinamento delle mosse
+## 7. Ordinamento delle mosse
 
 `order_moves(game, moves)` ordina le mosse prima di esplorarle nell'alpha-beta. Un buon ordinamento massimizza i tagli e riduce drasticamente il numero di nodi visitati.
 
@@ -252,7 +334,7 @@ def move_priority(move):
     (fr, fc), (tr, tc), is_capture = move
     src_level = _level(game, fr, fc)
     dst_level = _level(game, tr, tc)
-    delta = dst_level - src_level
+    delta     = dst_level - src_level
 
     if is_capture:
         return (0, -dst_level, -src_level)   # catture prima, poi per livello assoluto
@@ -266,11 +348,11 @@ def move_priority(move):
 2. **Tra le catture:** livello assoluto di destinazione decrescente — catture verso celle più periferiche prima.
 3. **Tra le non-catture:** livello assoluto di destinazione come criterio primario, poi delta (differenza di livello) come secondario.
 
-Il criterio 3 è il **fix principale** della v2 (vedi Sezione 9).
+Il criterio 3 è il **fix principale** della v2 (vedi Sezione 10).
 
 ---
 
-## 7. Algoritmo Alpha-Beta con gestione del timeout
+## 8. Algoritmo Alpha-Beta con gestione del timeout
 
 `_alphabeta(game, state, depth, alpha, beta, maximizing, root_player, deadline)` implementa il classico minimax con potatura alpha-beta.
 
@@ -320,7 +402,7 @@ if alpha >= beta:
 
 ---
 
-## 8. Iterative Deepening
+## 9. Iterative Deepening
 
 `playerStrategy` esplora l'albero di gioco con la tecnica dell'**iterative deepening**: parte dalla profondità 1 e aumenta di 1 a ogni iterazione, fino a quando il tempo a disposizione si esaurisce.
 
@@ -363,7 +445,7 @@ I 150 ms di margine assicurano che il giocatore non superi mai il limite di temp
 
 ---
 
-## 9. Il fix principale rispetto alla v1
+## 10. Il fix principale rispetto alla v1
 
 ### Il bug della v1
 
@@ -397,25 +479,25 @@ Lo stesso principio è applicato alla funzione `_positional_value`, che ora usa 
 
 ---
 
-## 10. Costanti e pesi
+## 11. Costanti e pesi
 
 | Costante                | Valore | Componente                                      |
 |-------------------------|--------|-------------------------------------------------|
 | `_TIME_MARGIN`          | 0.15   | Margine di sicurezza sul timeout (secondi)      |
 | `_W_PIECES`             | 80     | Differenza pedine residue                       |
-| `_W_MOBILITY`           | 2      | Differenza mosse legali disponibili             |
-| `_W_CAPTURE_COUNT`      | 10     | Differenza numero catture disponibili           |
+| `_W_MOBILITY`           | 9      | Differenza mosse legali disponibili             |
+| `_W_CAPTURE_COUNT`      | 2      | Differenza numero catture disponibili           |
 | `_W_POSITION`           | 6      | Valore posizionale assoluto (livello²)          |
-| `_W_CAPTURE_OUTER`      | 5      | P1: catture verso celle più esterne             |
+| `_W_CAPTURE_OUTER`      | 1      | P1: catture verso celle più esterne             |
 | `_W_THREAT_PRESSURE`    | 1      | P3: qualità delle catture disponibili           |
-| `_W_CAPTURE_DANGEROUS`  | 2      | P4: cattura pedine pericolose                   |
+| `_W_CAPTURE_DANGEROUS`  | 1      | P4: cattura pedine pericolose                   |
 | `_W_CORNER_SETUP`       | 4      | P5: setup verso angoli/periferia                |
 
 La gerarchia dei pesi riflette le priorità strategiche: il materiale (`_W_PIECES = 80`) domina di gran lunga le considerazioni posizionali, garantendo che il giocatore non sacrifichi pedine in cambio di miglioramenti posizionali marginali.
 
 ---
 
-## 11. Entry point — `playerStrategy`
+## 12. Entry point — `playerStrategy`
 
 ```python
 def playerStrategy(game, state, timeout=3) -> move | None
@@ -430,7 +512,7 @@ def playerStrategy(game, state, timeout=3) -> move | None
 
 ---
 
-## 12. Flusso completo di esecuzione
+## 13. Flusso completo di esecuzione
 
 ```
 playerStrategy(game, state, timeout)
@@ -458,4 +540,4 @@ playerStrategy(game, state, timeout)
 
 ---
 
-*Documentazione per `playerExampleNostroIbrido2.py`, attualmente lo stato dell'arte del gruppo per il gioco Zola*
+*Documentazione per `playerPRR.py`, attualmente lo stato dell'arte del gruppo per il gioco Zola*
