@@ -19,8 +19,8 @@ Player fin'ora implementati:
 '''
 
 ########## SETTING DEI GIOCATORI  ##################
-import playerPaRuRaDEBUG as playerRmodule
-import vecchiPlayerEuristici.provaFra as playerBmodule
+import vecchiPlayerEuristici.provaFra as playerRmodule
+import vecchiPlayerEuristici.provaFra3 as playerBmodule
 ############################################################
 
 class Game:

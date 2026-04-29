@@ -4,7 +4,7 @@ import random
 from ZolaGameS import ZolaGame  # <-- CAMBIA con il nome del tuo file
 
 from vecchiPlayerEuristici import playerExampleNostroEU  as playerA
-import GiocoIA.playerPaRuRa as playerB
+import playerPaRuRa as playerB
 
 
 NUM_GAMES = 15
