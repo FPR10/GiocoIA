@@ -3,8 +3,8 @@ import random
 
 from ZolaGameS import ZolaGame  # <-- CAMBIA con il nome del tuo file
 
-from vecchiPlayerEuristici import playerExampleNostroEU  as playerA
-import playerPaRuRa as playerB
+import playerMichael2 as playerA
+import playerMichael as playerB
 
 
 NUM_GAMES = 15
