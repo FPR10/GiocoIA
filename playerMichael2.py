@@ -20,7 +20,7 @@ import time
 # ─────────────────────────────────────────────────────────────────────────────
 
 _TIME_MARGIN = 0.15
-DEBUG_DEPTH = True
+DEBUG_DEPTH = False
 
 MAX_DEPTH_SAFETY = 10_000
 

@@ -21,9 +21,9 @@ import time
 #   • quiescence search leggera sulle catture.
 # ─────────────────────────────────────────────────────────────────────────────
 
-_TIME_MARGIN = 0.18
+_TIME_MARGIN = 0.15
 
-DEBUG_DEPTH = True
+DEBUG_DEPTH = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
