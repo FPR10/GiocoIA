@@ -19,8 +19,8 @@ Player fin'ora implementati:
 '''
 
 ########## SETTING DEI GIOCATORI  ##################
-import paruraGiuseppe2 as playerRmodule
-import paruraGiuseppe as playerBmodule
+import GiocoIA.playerPaRuRa as playerRmodule
+import GiocoIA.vecchiPlayersParura.playerPaRuRa_v1 as playerBmodule
 ############################################################
 
 class Game:
