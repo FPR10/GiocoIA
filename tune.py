@@ -65,9 +65,9 @@ STRATEGY_MODULE = "playerPaRuRa"
 # CONFIG  ──  modifica questi valori per bilanciare velocità/accuratezza
 # ═══════════════════════════════════════════════════════════════════════════════
 
-GAMES_PER_EVAL  = 20    # partite per valutare un candidato (min consigliato: 20)
-MAX_ITERATIONS  = 40    # iterazioni hill-climbing totali
-SEARCH_DEPTH    = 2     # profondità alpha-beta nelle partite headless
+GAMES_PER_EVAL  = 25    # partite per valutare un candidato (min consigliato: 20)
+MAX_ITERATIONS  = 45    # iterazioni hill-climbing totali
+SEARCH_DEPTH    = 3     # profondità alpha-beta nelle partite headless
 MAX_MOVES       = 400   # mosse massime per partita prima di dichiarare pari
 MIN_WIN_RATE    = 0.52  # soglia minima per accettare il candidato
 PERTURB_N       = 2     # quanti pesi perturbare per iterazione
