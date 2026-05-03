@@ -1,8 +1,11 @@
 """
 tuneWeights.py
 ==============
-Ottimizzazione automatica dei pesi euristici di playerExampleNostro.py
+Ottimizzazione automatica dei pesi euristici di playerPaRuRa.py
 tramite hill-climbing stocastico con self-play headless.
+
+Ogni mossa della partita di valutazione ha un timeout HARD di 1 secondo
+(non superabile) e usa alpha-beta a profondità fissa 2.
 
 Come funziona
 ─────────────
@@ -21,23 +24,14 @@ Come funziona
 Parametri configurabili (sezione CONFIG)
 ─────────────────────────────────────────
 GAMES_PER_EVAL   partite per confronto (più alto = più accurato, più lento)
-MAX_ITERATIONS   -> iterazioni totali dell'hill climbing
-SEARCH_DEPTH     -> profondità alpha-beta fissa usata nelle partite headless
-                   (valore basso = più veloce; usa 2 o 3)
-MAX_MOVES        -> tetto al numero di mosse per partita (anti-loop)
-MIN_WIN_RATE     -> win-rate minimo del candidato per essere accettato
-PERTURB_N        -> quanti pesi perturbare contemporaneamente
-PERTURB_RANGE    -> ampiezza massima della perturbazione (±)
-WORKERS          -> partite in parallelo (usa os.cpu_count() per il massimo)
-
-Uso
-───
-    python tuneWeights.py
-
-Output
-──────
-    Stampa su console il progresso e scrive best_weights.json con i pesi
-    ottimali da copiare in playerExampleNostro.py.
+MAX_ITERATIONS   iterazioni totali dell'hill climbing
+SEARCH_DEPTH     profondità alpha-beta fissa (2 consigliato con timeout 1 s)
+MOVE_TIMEOUT     timeout HARD in secondi per ogni singola mossa (non superabile)
+MAX_MOVES        tetto al numero di mosse per partita (anti-loop)
+MIN_WIN_RATE     win-rate minimo del candidato per essere accettato
+PERTURB_N        quanti pesi perturbare contemporaneamente
+PERTURB_RANGE    ampiezza massima della perturbazione (±)
+WORKERS          partite in parallelo
 """
 
 import sys
@@ -49,28 +43,29 @@ import time
 import copy
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# ── assicuriamoci di trovare ZolaGameS e playerExampleNostro nella stessa dir ──
-_this_dir   = os.path.dirname(os.path.abspath(__file__))   # .../GiocoIA/GiocoIA
-_parent_dir = os.path.dirname(_this_dir)                    # .../GiocoIA
+# ── assicuriamoci di trovare ZolaGameS e playerPaRuRa nella stessa dir ──────
+_this_dir   = os.path.dirname(os.path.abspath(__file__))
+_parent_dir = os.path.dirname(_this_dir)
 sys.path.insert(0, _parent_dir)
 sys.path.insert(0, _this_dir)
 
-from ZolaGameS import ZolaGame          # motore di gioco
-import playerPaRuRa as _P        # strategia da ottimizzare
+from ZolaGameS import ZolaGame
+import playerPaRuRa as _P
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CONFIG  ──  modifica questi valori per bilanciare velocità/accuratezza
+# CONFIG
 # ═══════════════════════════════════════════════════════════════════════════════
 
-GAMES_PER_EVAL  = 20    # partite per valutare un candidato (min consigliato: 20)
-MAX_ITERATIONS  = 40    # iterazioni hill-climbing totali
-SEARCH_DEPTH    = 2     # profondità alpha-beta nelle partite headless
-MAX_MOVES       = 400   # mosse massime per partita prima di dichiarare pari
-MIN_WIN_RATE    = 0.52  # soglia minima per accettare il candidato
-PERTURB_N       = 2     # quanti pesi perturbare per iterazione
-PERTURB_RANGE   = 8     # perturbazione massima ± per ogni peso
-WORKERS         = max(1, (os.cpu_count() or 2) - 1)  # processi paralleli
+GAMES_PER_EVAL  = 20     # partite per valutare un candidato (min consigliato: 20)
+MAX_ITERATIONS  = 300     # iterazioni hill-climbing totali
+SEARCH_DEPTH    = 2      # profondità alpha-beta fissa nelle partite headless
+MOVE_TIMEOUT    = 1.0    # timeout HARD per ogni mossa (secondi) — NON superabile
+MAX_MOVES       = 400    # mosse massime per partita prima di dichiarare pari
+MIN_WIN_RATE    = 0.52   # soglia minima per accettare il candidato
+PERTURB_N       = 2      # quanti pesi perturbare per iterazione
+PERTURB_RANGE   = 8      # perturbazione massima ± per ogni peso
+WORKERS         = max(1, (os.cpu_count() or 2) - 1)
 
 BASE_WEIGHTS = {
     "_W_PIECES":              80,
@@ -83,12 +78,11 @@ BASE_WEIGHTS = {
     "_W_CORNER_SETUP":         4,
 }
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Simulatore headless
+# Helpers interni
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _apply_weights(module, weights: dict):
@@ -98,9 +92,17 @@ def _apply_weights(module, weights: dict):
 
 
 def _make_strategy(weights: dict):
-    """Ritorna una funzione strategy che usa i pesi dati (closure pulita)."""
+    """
+    Ritorna una funzione strategy che:
+      - Applica i pesi dati al modulo playerPaRuRa
+      - Chiama _alphabeta con depth=SEARCH_DEPTH e deadline = now + MOVE_TIMEOUT
+        (timeout HARD: la ricerca si interrompe esattamente dopo MOVE_TIMEOUT s)
+      - NON usa iterative deepening: una sola chiamata a profondità fissa
 
-    import importlib
+    Il timeout viene imposto passando la deadline direttamente ad _alphabeta;
+    qualsiasi eccezione _Timeout viene catturata e la migliore mossa fin qui
+    trovata (o una mossa casuale) viene restituita.
+    """
     import playerPaRuRa as mod
 
     _apply_weights(mod, weights)
@@ -115,18 +117,31 @@ def _make_strategy(weights: dict):
         root_pieces = state.count(root_player)
         opp_pieces  = state.count(opponent)
 
-        # Chiamata diretta a _alphabeta a profondità fissa SEARCH_DEPTH,
-        # senza iterative deepening → nessun timeout, veloce per il tuning
-        _, best = mod._alphabeta(
-            game, state, SEARCH_DEPTH,
-            -math.inf, math.inf,
-            True, root_player, math.inf,   # deadline = infinito (no timeout)
-            root_pieces, opp_pieces,
-        )
+        # Deadline hard: la ricerca DEVE finire entro MOVE_TIMEOUT secondi
+        deadline = time.perf_counter() + MOVE_TIMEOUT
+
+        try:
+            _, best = mod._alphabeta(
+                game, state, SEARCH_DEPTH,
+                -math.inf, math.inf,
+                True,
+                root_player,
+                deadline,          # timeout non superabile
+                root_pieces,
+                opp_pieces,
+            )
+        except Exception:
+            # _Timeout o qualsiasi altro errore → mossa di fallback
+            best = None
+
         return best if best is not None else random.choice(legal_moves)
 
     return strategy
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Simulatore headless
+# ──────────────────────────────────────────────────────────────────────────────
 
 def simulate_game(weights_red: dict, weights_blue: dict, seed: int = None) -> str:
     """Gioca una partita headless. Ritorna 'Red', 'Blue' o 'Draw'."""
@@ -171,7 +186,7 @@ def simulate_game(weights_red: dict, weights_blue: dict, seed: int = None) -> st
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Wrapper per ProcessPoolExecutor (deve essere pickle-able → funzione top-level)
+# Wrapper per ProcessPoolExecutor (top-level per essere pickle-able)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _run_single_game(args):
@@ -193,7 +208,7 @@ def evaluate_candidate(weights_cand: dict, weights_curr: dict, n_games: int) -> 
     Fa giocare n_games partite alternando i colori.
     Ritorna il win-rate del candidato in [0, 1].
     """
-    half = n_games // 2
+    half  = n_games // 2
     tasks = []
     for i in range(half):
         tasks.append((weights_cand, weights_curr, True,  i * 2))      # cand = Red
@@ -237,27 +252,27 @@ def hill_climb():
     print("=" * 64)
     print(f"  Partite/valutazione : {GAMES_PER_EVAL}")
     print(f"  Iterazioni max      : {MAX_ITERATIONS}")
-    print(f"  Profondita alpha-beta  : {SEARCH_DEPTH}")
+    print(f"  Profondità alpha-beta: {SEARCH_DEPTH} (fissa, no iterative deepening)")
+    print(f"  Timeout per mossa   : {MOVE_TIMEOUT:.1f} s  (HARD — non superabile)")
     print(f"  Worker paralleli    : {WORKERS}")
     print(f"  Min win-rate        : {MIN_WIN_RATE:.0%}")
     print("=" * 64)
 
     current = BASE_WEIGHTS.copy()
     best    = current.copy()
-    best_wr = 0.5    # win-rate rispetto a se stesso = 0.5 per definizione
+    best_wr = 0.5    # win-rate vs se stesso = 0.5 per definizione
 
-    history = []     # (iterazione, win_rate, pesi)
+    history = []
 
     for it in range(1, MAX_ITERATIONS + 1):
-        t0 = time.perf_counter()
+        t0        = time.perf_counter()
         candidate = perturb(current)
 
-        # mostra solo i pesi cambiati
         changed = {k: (current[k], candidate[k])
                    for k in candidate if candidate[k] != current[k]}
         changed_str = "  ".join(f"{k}: {v[0]}→{v[1]}" for k, v in changed.items())
 
-        wr = evaluate_candidate(candidate, current, GAMES_PER_EVAL)
+        wr      = evaluate_candidate(candidate, current, GAMES_PER_EVAL)
         elapsed = time.perf_counter() - t0
 
         accepted = wr >= MIN_WIN_RATE
@@ -273,10 +288,14 @@ def hill_climb():
                 best_wr = wr
                 print(f"  ★ Nuovo miglior set (wr={best_wr:.3f})")
 
-        history.append({"iter": it, "win_rate": round(wr, 4),
-                         "accepted": accepted, "weights": candidate.copy()})
+        history.append({
+            "iter":      it,
+            "win_rate":  round(wr, 4),
+            "accepted":  accepted,
+            "weights":   candidate.copy(),
+        })
 
-    # ── risultati finali ─────────────────────────────────────────────────────
+    # ── Risultati finali ─────────────────────────────────────────────────────
     print("\n" + "=" * 64)
     print("  OTTIMIZZAZIONE COMPLETATA")
     print("=" * 64)
@@ -286,18 +305,23 @@ def hill_climb():
         orig = BASE_WEIGHTS[k]
         diff = v - orig
         sign = f"+{diff}" if diff > 0 else str(diff)
-        print(f"    {k:<22} = {v:>4}   (base {orig:>3}, {sign})")
+        print(f"    {k:<26} = {v:>4}   (base {orig:>3}, {sign})")
 
-    # ── salvataggio ─────────────────────────────────────────────────────────
+    # ── Salvataggio ──────────────────────────────────────────────────────────
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "best_weights.json")
     with open(out_path, "w") as f:
-        json.dump({"best_weights": best, "best_win_rate": best_wr,
-                   "history": history}, f, indent=2)
+        json.dump({
+            "best_weights":   best,
+            "best_win_rate":  best_wr,
+            "search_depth":   SEARCH_DEPTH,
+            "move_timeout_s": MOVE_TIMEOUT,
+            "history":        history,
+        }, f, indent=2)
     print(f"\n  Risultati salvati in: {out_path}")
-    print("\n  Copia questi valori in playerExampleNostro.py:")
+    print("\n  Copia questi valori in playerPaRuRa.py:")
     print("  " + "-" * 50)
     for k, v in best.items():
-        print(f"  {k:<22} = {v}")
+        print(f"  {k:<26} = {v}")
     print("  " + "-" * 50)
 
     return best
@@ -308,8 +332,6 @@ def hill_climb():
 # ──────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # Necessario su Windows per il multiprocessing con spawn
     from multiprocessing import freeze_support
     freeze_support()
-
     hill_climb()
