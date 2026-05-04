@@ -1,10 +1,10 @@
 import time
 import random
 
-from ZolaGameS import ZolaGame  # <-- CAMBIA con il nome del tuo file
+from ZolaGameS import ZolaGame
 
-import GiocoIA.playerPaRuRa as playerA
-import GiocoIA.vecchiPlayersParura.playerPaRuRa_v1 as playerB
+from playerProfessore import playerExampleAlpha as playerA
+import playerPaRuRa as playerB
 
 
 NUM_GAMES = 10
