@@ -5,40 +5,39 @@ import time
 # ─────────────────────────────────────────────────────────────────────────────
 # Zola AI - Strategia con iterative deepening e alpha-beta pruning
 #
-# Euristica IDENTICA a PaRuRa (stesse regole R1-R4 e stessi pesi).
-# Ottimizzazioni implementate per raggiungere depth=4 in tempo:
+# Euristica composta da quattro regole (R1-R4) con pesi configurabili.
+# Ottimizzazioni implementate per raggiungere depth=4 nel tempo limite:
 #
-#   1. Le mosse di ogni nodo vengono generate UNA SOLA VOLTA e riutilizzate
-#      sia per l'alpha-beta sia per la valutazione euristica, eliminando le
+#   1. Le mosse di ogni nodo vengono generate una sola volta e riutilizzate
+#      sia per l'alpha-beta sia per la valutazione euristica, eliminando
 #      chiamate duplicate a _actions_for_player.
 #
-#   2. Il conteggio delle pedine è tenuto incrementalmente nel nodo
-#      di ricerca (delta ±1 per cattura), senza riscandire tutta la board.
+#   2. Il conteggio delle pedine è aggiornato incrementalmente durante
+#      la ricerca (delta ±1 per cattura), senza riscandire l'intera board.
 #
 #   3. R4 (corner_setup) usa un'approssimazione O(1): invece di espandere
-#      i figli delle mosse non catturanti (8× game.result + 8× actions),
-#      stima il bonus contando direttamente le celle di alto livello
-#      adiacenti alle destinazioni dei non-cattura, con lo stesso spirito
-#      della regola originale ma senza il costo di espansione.
+#      i figli delle mosse non catturanti, stima il bonus contando
+#      direttamente le celle di alto livello adiacenti alle destinazioni
+#      dei non-cattura, con lo stesso spirito della regola ma senza
+#      il costo di espansione dei nodi figlio.
 #
 #   4. game.winner() viene chiamato solo dopo aver verificato i conteggi
-#      (early-exit se nessuna pedina è a zero), evitando le due chiamate
-#      a player_has_moves nei casi non-terminali (che sono la stragrande
-#      maggioranza).
+#      (early-exit se nessun contatore è a zero), evitando le due chiamate
+#      a player_has_moves nei casi non-terminali, che sono la maggioranza.
 #
-#   5. L'ordinamento delle mosse usa una chiave numerica diretta invece
-#      di una tupla, riducendo il costo di sorting.
+#   5. L'ordinamento delle mosse usa una chiave numerica unica invece di
+#      una tupla, riducendo il costo complessivo di sorting.
 #
-#   6. Il TIME_MARGIN è ridotto a 0.08 s (era 0.15 s): con l'iterative
-#      deepening, il margine serve solo per la latenza di ritorno dalla
-#      ricorsione, non per l'intera iterazione.
+#   6. Il TIME_MARGIN è fissato a 0.08 s: con l'iterative deepening,
+#      il margine copre solo la latenza di ritorno dalla ricorsione,
+#      non l'intera iterazione.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 
 _TIME_MARGIN = 0.08
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Pesi euristici  (INVARIATI rispetto all'originale)
+# Pesi euristici
 # ─────────────────────────────────────────────────────────────────────────────
 
 _W_PIECES             = 80
@@ -53,7 +52,7 @@ _W_CORNER_SETUP       = 4
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Helpers (INVARIATI nella logica)
+# Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _level(game, r, c):
@@ -66,8 +65,9 @@ def _max_level(game):
 
 def _positional_value(game, state, player):
     """
-    Valore posizionale assoluto: somma esponenziale dei livelli occupati.
-    Invariato rispetto all'originale.
+    Valore posizionale assoluto: somma dei quadrati dei livelli occupati
+    dal giocatore, meno la somma analoga dell'avversario.
+    Celle di livello più alto contribuiscono esponenzialmente di più.
     """
     opponent = game.opponent(player)
     player_val = 0
@@ -91,12 +91,12 @@ def _positional_value(game, state, player):
 
 
 def _capture_outer_bonus(game, captures):
-    """R1: invariato."""
+    """R1: bonus sulle catture in posizioni esterne (livello basso)."""
     return sum(game.distance_levels[tr][tc] for (_, (tr, tc), _) in captures)
 
 
 def _capture_threat_score_from_caps(game, captures):
-    """R2: invariato."""
+    """R2: pressione offensiva basata sulla qualità delle catture disponibili."""
     score     = 0
     max_level = _max_level(game)
     dl        = game.distance_levels
@@ -109,7 +109,7 @@ def _capture_threat_score_from_caps(game, captures):
 
 
 def _capture_dangerous_piece_bonus_from_moves(game, captures, opponent_moves):
-    """R3: invariato."""
+    """R3: bonus per catturare pedine avversarie minacciose o ben posizionate."""
     threatening_pieces = {
         (fr, fc)
         for (fr, fc), _, is_cap in opponent_moves
@@ -128,16 +128,16 @@ def _capture_dangerous_piece_bonus_from_moves(game, captures, opponent_moves):
 
 def _corner_setup_bonus_approx(game, state, player, non_captures):
     """
-    R4 approssimata: stessa semantica dell'originale, costo O(k) invece di O(k·N²).
+    R4 approssimata: stima le opportunità di cattura verso celle centrali
+    che si aprirebbero dopo le mosse non catturanti di livello più alto.
 
-    L'originale espandeva fino a 8 figli e per ciascuno calcolava le catture
-    disponibili verso celle di livello >= max_level-1.  Quella espansione
-    è il principale collo di bottiglia a depth ≥ 3.
+    Per ciascuna delle (fino a) 8 destinazioni più esterne tra le mosse
+    non catturanti, conta le pedine avversarie raggiungibili in line retta
+    che si trovano a livello >= max_level-1. Ogni pedina raggiungibile
+    vale 1 punto di bonus.
 
-    Approssimazione: per ognuna delle 8 mosse non catturanti più esterne,
-    contiamo le celle adiacenti alla destinazione che hanno livello ≥ soglia
-    e contengono una pedina avversaria (cioè sarebbero catturabili dal
-    punto di arrivo). È un proxy della stessa quantità senza espandere.
+    Questa approssimazione evita l'espansione esplicita dei nodi figlio
+    mantenendo la stessa semantica di R4 a costo O(k) anziché O(k·N²).
     """
     if not non_captures:
         return 0
@@ -160,8 +160,8 @@ def _corner_setup_bonus_approx(game, state, player, non_captures):
     for move in candidates:
         _, (tr, tc), _ = move
         dst_level = dl[tr][tc]
-        # Pedine avversarie raggiungibili in queen-line dalla destinazione
-        # verso celle di livello alto → proxy delle catture che si aprono
+        # Pedine avversarie di alto livello raggiungibili in queen-line
+        # dalla destinazione → proxy delle catture che si aprono
         for dr, dc in directions:
             nr, nc = tr + dr, tc + dc
             while 0 <= nr < size and 0 <= nc < size and board[nr][nc] is None:
@@ -177,8 +177,8 @@ def _corner_setup_bonus_approx(game, state, player, non_captures):
 # ─────────────────────────────────────────────────────────────────────────────
 # Valutazione euristica
 #
-# Firma cambiata: riceve le mosse già calcolate per evitare di ricalcolarle.
-# Le regole e i pesi sono IDENTICI all'originale.
+# Riceve le mosse già calcolate dal chiamante per evitare di ricalcolarle.
+# Combina le quattro regole R1-R4 con i rispettivi pesi.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _evaluate_with_moves(game, state, root_player,
@@ -186,7 +186,7 @@ def _evaluate_with_moves(game, state, root_player,
                          root_pieces, opp_pieces):
     """
     Valuta lo stato dal punto di vista di root_player.
-    Riceve mosse e conteggi già calcolati (ottimizzazione principale).
+    Riceve mosse e conteggi già calcolati per evitare ridondanze.
     """
     root_caps    = [m for m in root_moves if m[2]]
     opp_caps     = [m for m in opp_moves  if m[2]]
@@ -233,11 +233,15 @@ def _evaluate_with_moves(game, state, root_player,
 
 def _order_moves(game, moves):
     """
-    Ordina le mosse per migliorare il pruning alpha-beta.
-    Stessa logica dell'originale, chiave numerica unica per velocità.
+    Ordina le mosse per massimizzare l'efficacia del pruning alpha-beta.
 
-    Catture prima (is_capture), poi per livello assoluto di destinazione
-    (decrescente), poi per delta come criterio secondario.
+    Criteri in ordine di priorità:
+      1. Catture prima delle non-catture.
+      2. Destinazione di livello più alto (decrescente).
+      3. Delta livello src→dst come criterio di spareggio (peso 0.01).
+
+    Una chiave numerica unica sostituisce la tupla per ridurre il costo
+    di confronto durante il sorting.
     """
     dl = game.distance_levels
     BIG = 1000
@@ -263,36 +267,41 @@ class _Timeout(Exception):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Alpha-beta con passaggio delle mosse già calcolate
+# Alpha-beta
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _alphabeta(game, state, depth, alpha, beta, maximizing,
                root_player, deadline,
                root_pieces, opp_pieces):
     """
-    Alpha-beta pruning con:
-      - Mosse generate una sola volta e riusate per la valutazione
-      - Conteggio pedine incrementale (evita di riscandire la board)
-      - Early-exit su terminale via conteggi prima di chiamare winner()
+    Ricerca alpha-beta con le seguenti ottimizzazioni:
+
+      - Le mosse vengono generate una sola volta per nodo e riusate
+        sia per l'espansione sia per la valutazione euristica alle foglie.
+      - Il conteggio delle pedine è aggiornato incrementalmente (±1 per
+        cattura) senza riscandire la board.
+      - Il controllo di stato terminale sfrutta i contatori come early-exit:
+        se nessun contatore è a zero, winner() non viene chiamato.
+      - In caso di assenza di mosse legali, il turno viene passato senza
+        decrementare depth, per non consumare profondità su stati forzati.
     """
     if time.perf_counter() >= deadline:
         raise _Timeout()
 
     opponent = game.opponent(root_player)
 
-    # ── Fast terminal check ──────────────────────────────────────────────────
-    # Se un giocatore ha 0 pedine è terminale: inutile chiamare winner()
-    # che riscansisce la board e chiama player_has_moves due volte.
+    # ── Controllo terminale via contatori ────────────────────────────────────
+    # Evita di chiamare winner() (che riscansisce la board) nei casi normali.
     if root_pieces == 0:
         return -100_000, None
     if opp_pieces == 0:
         return 100_000, None
 
-    # ── Genera mosse del turno corrente ──────────────────────────────────────
+    # ── Generazione mosse del turno corrente ─────────────────────────────────
     cur_player  = state.to_move
     legal_moves = game._actions_for_player(state, cur_player)
 
-    # Passaggio turno: nessuna mossa disponibile
+    # Nessuna mossa disponibile: passa il turno
     if not legal_moves:
         passed_state = game.pass_turn(state)
         return _alphabeta(
@@ -302,9 +311,10 @@ def _alphabeta(game, state, depth, alpha, beta, maximizing,
             root_pieces, opp_pieces,
         )
 
-    # ── Leaf node ────────────────────────────────────────────────────────────
+    # ── Foglia: valutazione euristica ────────────────────────────────────────
     if depth == 0:
-        # Calcoliamo le mosse dell'avversario per la valutazione
+        # Le mosse dell'avversario servono alla valutazione; vengono calcolate
+        # solo qui, alla foglia, per non appesantire i nodi interni.
         adv_player = game.opponent(cur_player)
         opp_moves  = game._actions_for_player(state, adv_player)
 
@@ -320,7 +330,7 @@ def _alphabeta(game, state, depth, alpha, beta, maximizing,
             r_moves, o_moves, r_pieces, o_pieces
         ), None
 
-    # ── Espansione ───────────────────────────────────────────────────────────
+    # ── Espansione con pruning ────────────────────────────────────────────────
     ordered = _order_moves(game, legal_moves)
     best_moves = []
 
@@ -330,12 +340,11 @@ def _alphabeta(game, state, depth, alpha, beta, maximizing,
             (fr, fc), (tr, tc), is_cap = move
             child = game.result(state, move)
 
-            # Aggiornamento incrementale del conteggio pedine
+            # Aggiornamento incrementale: una cattura rimuove una pedina
+            # avversaria (se cur_player == root_player) o una propria.
             new_root_pieces = root_pieces
             new_opp_pieces  = opp_pieces
             if is_cap:
-                # cur_player cattura → se cur_player == root_player, perdiamo
-                # una pedina avversaria; altrimenti perdiamo una nostra pedina.
                 if cur_player == root_player:
                     new_opp_pieces  -= 1
                 else:
@@ -394,7 +403,11 @@ def _alphabeta(game, state, depth, alpha, beta, maximizing,
 def playerStrategy(game, state, timeout=3):
     """
     Strategia principale con iterative deepening.
-    Restituisce una mossa legale nel formato prodotto da game.actions(state).
+
+    Itera dalla depth=1 aumentando di uno ad ogni ciclo finché il tempo
+    a disposizione lo consente. La migliore mossa trovata nell'ultima
+    iterazione completata viene restituita; in caso di timeout a depth=1,
+    viene comunque restituita una mossa casuale tra quelle legali.
     """
     legal_moves = game.actions(state)
     if not legal_moves:
