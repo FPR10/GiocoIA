@@ -2,6 +2,14 @@ import math
 import random
 import time
 
+'''
+Gruppo composto da:
+- Francesco Pio Ruffo - mat. 277306
+- Giuseppe Pio Raho - mat. 276870
+- Michael Parise - mat. 
+'''
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Zola AI - Strategia con iterative deepening e alpha-beta pruning
 #
